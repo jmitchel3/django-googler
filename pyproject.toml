@@ -1,3 +1,7 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
 [project]
 name = "django-googler"
 version = "0.0.1"
@@ -34,3 +38,45 @@ dev = [
   "pre-commit>=4.3",
   "rav>=0.1.1",
 ]
+test = [
+  "coverage[toml]>=7.6",
+  "pytest>=8.3",
+  "pytest-django>=4.9",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = [ "src", "." ]
+testpaths = [ "tests" ]
+addopts = "--reuse-db"
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source_pkgs = [ "django_googler" ]
+omit = [ "*/tests/*" ]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+env_list =
+    py312
+    py313
+    py314
+
+[testenv]
+package = wheel
+wheel_build_env = .pkg
+deps =
+    coverage[toml]>=7.6
+    pytest>=8.3
+    pytest-django>=4.9
+commands =
+    coverage run --parallel-mode -m pytest {posargs}
+    coverage combine
+    coverage report
+"""
