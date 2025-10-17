@@ -119,7 +119,7 @@ wheels = [
 ]
 
 [[package]]
-name = "django-google"
+name = "django-googler"
 version = "0.0.1"
 source = { virtual = "." }
 dependencies = [

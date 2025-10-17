@@ -1,7 +1,7 @@
 [project]
-name = "django-google"
+name = "django-googler"
 version = "0.0.1"
-description = "Django Google is a simple way to integrate Google Auth Platform with your Django project."
+description = "Django Googler is a simple way to integrate Google Auth Platform with your Django project."
 readme = "README.md"
 keywords = [ "auth", "django", "djangorestframework", "google", "oauth", "oauth2", "oauthlib" ]
 authors = [
@@ -23,10 +23,10 @@ dependencies = [
   "google-auth-oauthlib>=1.2",
 ]
 
-urls.Changelog = "https://github.com/jmitchel3/django-google"
-urls.Documentation = "https://github.com/jmitchel3/django-google"
-urls.Funding = "https://github.com/jmitchel3/django-google"
-urls.Repository = "https://github.com/jmitchel3/django-google"
+urls.Changelog = "https://github.com/jmitchel3/django-googler"
+urls.Documentation = "https://github.com/jmitchel3/django-googler"
+urls.Funding = "https://github.com/jmitchel3/django-googler"
+urls.Repository = "https://github.com/jmitchel3/django-googler"
 
 [dependency-groups]
 dev = [
