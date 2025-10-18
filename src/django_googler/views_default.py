@@ -37,7 +37,9 @@ class GoogleOAuthLoginView(OAuthFlowInitMixin, View):
             OAuthFlowService.store_next_url(request, next_url)
 
             # Initialize OAuth flow using mixin
-            authorization_url, state = self.init_oauth_flow(request)
+            authorization_url, state = self.init_oauth_flow(
+                request,
+            )
 
             # Redirect to Google's OAuth page
             return redirect(authorization_url)
@@ -80,7 +82,7 @@ class GoogleOAuthCallbackView(OAuthCallbackProcessingMixin, View):
             state = request.GET.get("state")
 
             # Process OAuth callback using mixin
-            user, user_info, credentials = self.process_oauth_callback(
+            user, user_info, credentials, user_created = self.process_oauth_callback(
                 request, code, state
             )
 

@@ -30,7 +30,6 @@ def get_google_auth_flow(
         flow_scopes = GOOGLE_OAUTH_SCOPES
 
     redirect_uris_list = redirect_uri or GOOGLE_OAUTH_REDIRECT_URIS
-
     flow = Flow.from_client_config(
         client_config={
             "web": {
@@ -49,7 +48,6 @@ def get_google_auth_flow(
     # This is required for authorization_url() and fetch_token() to work
     if redirect_uris_list:
         flow.redirect_uri = redirect_uris_list[0]
-
     return flow
 
 

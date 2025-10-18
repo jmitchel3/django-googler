@@ -167,6 +167,7 @@ DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = True
 GOOGLE_OAUTH_REDIRECT_URIS = [
     "http://localhost:8000/auth/google/callback/",
     "http://localhost:8888/api/auth/google/callback/",
+    "http://localhost:8888/auth/google/callback/",
     "http://localhost:8000/api/auth/google/callback/",
 ]
 

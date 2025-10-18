@@ -71,7 +71,9 @@ class OAuthFlowInitMixin:
             return scopes.split(",")
         return None
 
-    def init_oauth_flow(self, request) -> tuple[str, str]:
+    def init_oauth_flow(
+        self, request, redirect_uri: Optional[str] = None
+    ) -> tuple[str, str]:
         """
         Initialize OAuth flow and generate authorization URL.
 
@@ -82,7 +84,7 @@ class OAuthFlowInitMixin:
             tuple: (authorization_url, state)
         """
         # Build redirect URI
-        redirect_uri = self.build_redirect_uri(request)
+        redirect_uri = redirect_uri or self.build_redirect_uri(request)
 
         # Parse custom scopes
         scopes = self.parse_scopes(request)
