@@ -17,7 +17,7 @@ class TestUserService:
 
     def test_create_new_user(self):
         """Test creating a new user from OAuth info."""
-        user = UserService.get_or_create_user(
+        user, _ = UserService.get_or_create_user(
             email="test@example.com",
             name="Test User",
             google_id="123456789",
@@ -31,7 +31,7 @@ class TestUserService:
 
     def test_create_user_with_given_family_names(self):
         """Test creating a user with given_name and family_name."""
-        user = UserService.get_or_create_user(
+        user, _ = UserService.get_or_create_user(
             email="john@example.com",
             given_name="John",
             family_name="Doe",
@@ -50,7 +50,7 @@ class TestUserService:
         )
 
         # Try to get or create
-        user = UserService.get_or_create_user(email="existing@example.com")
+        user, _ = UserService.get_or_create_user(email="existing@example.com")
 
         assert user.email == "existing@example.com"
         assert user.first_name == "Existing"
@@ -65,7 +65,7 @@ class TestUserService:
         )
 
         # Update with OAuth info
-        user = UserService.get_or_create_user(
+        user, _ = UserService.get_or_create_user(
             email="test@example.com", name="Test User"
         )
 
@@ -75,15 +75,15 @@ class TestUserService:
     def test_generate_unique_username(self):
         """Test unique username generation."""
         # Create first user
-        user1 = UserService.get_or_create_user(email="test@example.com")
+        user1, _ = UserService.get_or_create_user(email="test@example.com")
         assert user1.username == "test"
 
         # Create second user with same email prefix
-        user2 = UserService.get_or_create_user(email="test@different.com")
+        user2, _ = UserService.get_or_create_user(email="test@different.com")
         assert user2.username == "test1"
 
         # Create third user
-        user3 = UserService.get_or_create_user(email="test@another.com")
+        user3, _ = UserService.get_or_create_user(email="test@another.com")
         assert user3.username == "test2"
 
     def test_create_user_without_email_raises_error(self):

@@ -291,7 +291,7 @@ from django_googler import GoogleOAuthService, UserService, OAuthFlowService
 credentials_data = GoogleOAuthService.process_credentials(credentials)
 
 # Create or update user from OAuth info
-user = UserService.get_or_create_user(
+user, _ = UserService.get_or_create_user(
     email="user@example.com",
     name="John Doe",
     google_id="1234567890",

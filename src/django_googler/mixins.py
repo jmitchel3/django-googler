@@ -210,7 +210,7 @@ class OAuthCallbackProcessingMixin:
         if not email:
             raise ValueError("No email provided by Google")
 
-        user = UserService.get_or_create_user(
+        user, _ = UserService.get_or_create_user(
             email=email,
             name=user_info.get("name"),
             google_id=user_info.get("google_id"),
