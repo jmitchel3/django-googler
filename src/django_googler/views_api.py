@@ -51,9 +51,9 @@ class GoogleOAuthLoginAPIView(OAuthFlowInitMixin, APIView):
 
     def get_redirect_uri_name(self) -> str:
         """Get the URL name for the OAuth callback."""
-        from django_googler.defaults import GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME
+        from django_googler.defaults import GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME
 
-        return GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME
+        return GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME
 
     def get(self, request: Request) -> Response:
         """Handle GET request to start OAuth flow."""
@@ -89,7 +89,7 @@ class GoogleOAuthCallbackAPIView(
 
     This endpoint receives the authorization code from the client,
     exchanges it for Google tokens, creates/authenticates the user,
-    and returns a DRF API token for subsequent authenticated requests.
+    and returns JWT tokens for subsequent authenticated requests.
 
     Request Body (POST):
         code: Authorization code from Google (required)
@@ -97,7 +97,7 @@ class GoogleOAuthCallbackAPIView(
         redirect_uri: The redirect URI used in the OAuth flow (optional)
 
     Returns:
-        JSON response with DRF token, user info, and Google tokens
+        JSON response with JWT tokens, user info, and Google tokens
 
     Example Request:
         POST /api/auth/google/callback/
@@ -109,7 +109,8 @@ class GoogleOAuthCallbackAPIView(
 
     Example Response:
         {
-            "token": "drf_api_token_abc123...",
+            "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+            "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
             "user": {
                 "id": 1,
                 "email": "user@example.com",
@@ -125,7 +126,9 @@ class GoogleOAuthCallbackAPIView(
         }
 
     Note:
-        - The DRF token is always returned for backend authentication
+        - JWT access and refresh tokens are always returned for backend authentication
+        - Use the access token in Authorization header: "Bearer <access_token>"
+        - Use the refresh token to get a new access token when it expires
         - Google tokens are only included if GOOGLE_OAUTH_RETURN_TOKENS = True
         - Set GOOGLE_OAUTH_RETURN_TOKENS = True if your frontend needs to
           call Google APIs directly (Calendar, Drive, Gmail, etc.)
@@ -168,18 +171,21 @@ class GoogleOAuthCallbackAPIView(
             redirect_uri = request_serializer.validated_data.get("redirect_uri")
 
             # Process OAuth callback using mixin
-            user, user_info, credentials = self.process_oauth_callback(
+            user, user_info, credentials, user_created = self.process_oauth_callback(
                 request, code, state, redirect_uri
             )
 
-            # Generate or get API token for the user
-            from rest_framework.authtoken.models import Token
+            # Generate JWT tokens for the user
+            from rest_framework_simplejwt.tokens import RefreshToken
 
-            token, created = Token.objects.get_or_create(user=user)
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
 
             # Build response
             response_data = {
-                "token": token.key,
+                "access": access_token,
+                "refresh": refresh_token,
                 "user": user,
             }
 
@@ -189,9 +195,12 @@ class GoogleOAuthCallbackAPIView(
                     credentials
                 )
 
+            response_status = (
+                status.HTTP_200_OK if user_created else status.HTTP_201_CREATED
+            )
             # Return response
             response_serializer = GoogleOAuthCallbackResponseSerializer(response_data)
-            return Response(response_serializer.data, status=status.HTTP_200_OK)
+            return Response(response_serializer.data, status=response_status)
 
         except ValueError as e:
             # Handle validation errors (state mismatch, missing email, etc.)
@@ -221,7 +230,11 @@ class CurrentUserAPIView(APIView):
     Get current authenticated user information.
 
     Returns user details for the authenticated user.
-    Requires authentication via DRF Token.
+    Requires authentication via JWT Bearer token.
+
+    Example:
+        GET /api/auth/me/
+        Headers: Authorization: Bearer <access_token>
     """
 
     permission_classes = [IsAuthenticated]
@@ -238,19 +251,36 @@ class GoogleOAuthLogoutAPIView(APIView):
     """
     Logout and clear authentication tokens.
 
-    Deletes the user's DRF token and clears session data.
+    Blacklists the user's JWT refresh token and clears session data.
     Optionally can revoke Google OAuth access.
+
+    Request Body:
+        refresh: The refresh token to blacklist (required)
+
+    Example:
+        POST /api/auth/logout/
+        {
+            "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+        }
     """
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request) -> Response:
         """Handle logout request."""
-        # Delete DRF token
         try:
-            request.user.auth_token.delete()
-        except AttributeError:
-            pass  # User might not have a token
+            # Blacklist the refresh token
+            from rest_framework_simplejwt.tokens import RefreshToken
+
+            refresh_token = request.data.get("refresh")
+            if refresh_token:
+                try:
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+                except Exception as e:
+                    logger.warning(f"Failed to blacklist token: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Error processing token blacklist: {str(e)}")
 
         # Clear OAuth session data
         request.session.pop("google_access_token", None)

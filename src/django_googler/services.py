@@ -429,14 +429,15 @@ class UserService:
                 user.save()
                 logger.info(f"Updated user info for: {email}")
 
-            return user
+            return user, False
 
         except User.DoesNotExist:
             # Create new user
             logger.info(f"Creating new user: {email}")
-            return UserService._create_new_user(
+            user = UserService._create_new_user(
                 email, name, given_name, family_name, google_id, picture
             )
+            return user, True
 
     @staticmethod
     def _update_user_info(

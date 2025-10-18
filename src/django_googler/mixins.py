@@ -292,7 +292,7 @@ class OAuthCallbackProcessingMixin:
         user_info = self.extract_user_data(credentials)
 
         # Create or get user
-        user = self.create_or_get_user(user_info)
+        user, user_created = self.create_or_get_user(user_info)
 
         # Store tokens
         self.store_user_tokens(request, user, credentials, user_info)
@@ -302,7 +302,7 @@ class OAuthCallbackProcessingMixin:
 
         logger.info(f"User {user.email} authenticated via Google OAuth")
 
-        return user, user_info, credentials
+        return user, user_info, credentials, user_created
 
 
 class TokenResponseMixin:

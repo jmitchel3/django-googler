@@ -30,7 +30,7 @@ class GoogleOAuthCallbackRequestSerializer(serializers.Serializer):
     )
 
 
-class UserSerializer(serializers.Serializer):
+class UserSerializer(serializers.ModelSerializer):
     """User information serializer."""
 
     def __init__(self, *args, **kwargs):
@@ -61,7 +61,7 @@ class GoogleTokensSerializer(serializers.Serializer):
 
 
 class GoogleOAuthCallbackResponseSerializer(serializers.Serializer):
-    """Response serializer for OAuth callback endpoint."""
+    """Response serializer for OAuth callback endpoint with JWT tokens."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -71,8 +71,9 @@ class GoogleOAuthCallbackResponseSerializer(serializers.Serializer):
                 help_text="Authenticated user information"
             )
 
-    token = serializers.CharField(
-        help_text="DRF authentication token for backend API calls"
+    access = serializers.CharField(help_text="JWT access token for backend API calls")
+    refresh = serializers.CharField(
+        help_text="JWT refresh token to obtain new access tokens when they expire"
     )
     google_tokens = GoogleTokensSerializer(
         required=False,
