@@ -10,6 +10,9 @@ Django Googler is a simple way to integrate Google OAuth Platform with your Djan
 - ⚙️ **Highly Configurable** - Override settings via Django settings
 - 🛡️ **CSRF Protection** - Built-in state verification
 - 👥 **Automatic User Management** - Create or update users from Google info
+- 💾 **Database Token Storage** - Persistent OAuth token storage with auto-refresh
+- 🔄 **Token Management** - Automatic token refresh when expired
+- 🎛️ **Django Admin Integration** - Manage OAuth tokens via Django admin
 - 📦 **Zero Configuration** - Works out of the box with sensible defaults
 - 🚦 **Rate Limiting** - Built-in throttling to prevent abuse
 - ✅ **Settings Validation** - Django system checks for configuration
@@ -68,13 +71,21 @@ GOOGLE_OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
 
-# Optional: Store OAuth tokens in session (useful for making Google API calls from backend)
+# Optional: Save OAuth tokens to database (recommended for persistent storage)
+# Default: True
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
+
+# Optional: Store OAuth tokens in session (legacy, use database storage instead)
 # Default: False
-GOOGLE_OAUTH_STORE_TOKENS = True
+GOOGLE_OAUTH_STORE_TOKENS = False
 
 # Optional: Return Google tokens in API callback response (for frontend Google API calls)
 # Default: False (only returns DRF token)
 GOOGLE_OAUTH_RETURN_TOKENS = False
+
+# Optional: Revoke Google OAuth tokens on logout
+# Default: False
+GOOGLE_OAUTH_REVOKE_ON_LOGOUT = False
 
 # Optional: Login URL for error redirects
 # Default: "/login/"
@@ -87,7 +98,9 @@ LOGIN_URL = "/admin/login/"
 python manage.py migrate
 ```
 
-This creates the necessary database tables for the authtoken app.
+This creates the necessary database tables for:
+- DRF authentication tokens (`authtoken`)
+- Google OAuth token storage (`django_googler`)
 
 ### 4. Add URL Patterns
 
@@ -307,13 +320,122 @@ Or for API views:
 curl "http://localhost:8000/api/auth/google/login/?scopes=openid,email,profile"
 ```
 
-### Storing OAuth Tokens
+### Database Token Storage (Recommended)
 
-If you want to make API calls to Google on behalf of users, enable token storage:
+**New in v0.0.4**: OAuth tokens are now automatically saved to the database by default. This allows your backend to make Google API calls on behalf of users and automatically refresh expired tokens.
+
+#### Accessing Stored Tokens
+
+```python
+from django_googler.services import GoogleOAuthService
+
+
+# Get user's token
+def my_view(request):
+    # Option 1: Get valid token (auto-refreshes if expired)
+    access_token, expiry = GoogleOAuthService.get_valid_token(request.user)
+
+    if access_token:
+        # Use token to call Google APIs
+        import requests
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.get(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers=headers,
+        )
+        events = response.json()
+
+    # Option 2: Get token object directly
+    token = GoogleOAuthService.get_user_token(request.user)
+    if token:
+        if token.is_expired():
+            # Manually refresh if needed
+            token = GoogleOAuthService.refresh_user_token(token)
+
+        # Check scopes
+        if token.has_scope("https://www.googleapis.com/auth/calendar"):
+            # User has calendar access
+            pass
+```
+
+#### Token Model
+
+The `GoogleOAuthToken` model stores:
+- Access token (for API calls)
+- Refresh token (for getting new access tokens)
+- Token expiry datetime
+- OAuth scopes granted
+- Google ID (sub claim)
+- ID token (JWT)
+
+```python
+from django_googler.models import GoogleOAuthToken
+
+# Get user's token
+token = GoogleOAuthToken.objects.get(user=request.user)
+
+# Check status
+if token.is_valid:
+    print("Token is valid and not expired")
+
+if token.can_refresh:
+    print("Token can be refreshed")
+
+# Get scopes
+scopes = token.get_scopes_list()
+# ['openid', 'email', 'profile']
+```
+
+#### Django Admin
+
+View and manage OAuth tokens in Django admin at `/admin/django_googler/googleoauthtoken/`:
+- See token status (Valid/Expired/Invalid)
+- View granted scopes
+- Search by user email or Google ID
+- Filter by date or expiry
+- Delete tokens when needed
+
+#### Token Management
+
+```python
+from django_googler.services import GoogleOAuthService
+
+# Save/update a user's token (automatically called during OAuth flow)
+token = GoogleOAuthService.save_user_token(
+    user=request.user,
+    credentials=credentials,
+    google_id="1234567890",
+    scopes=["email", "profile"],
+)
+
+# Refresh an expired token
+token = GoogleOAuthService.refresh_user_token(request.user)
+
+# Revoke and delete a token
+GoogleOAuthService.revoke_user_token(request.user)
+```
+
+#### Configuration
 
 ```python
 # settings.py
-GOOGLE_OAUTH_STORE_TOKENS = True
+
+# Save tokens to database (default: True)
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
+
+# Revoke tokens when user logs out (default: False)
+GOOGLE_OAUTH_REVOKE_ON_LOGOUT = True
+```
+
+### Legacy Session Token Storage
+
+If you prefer session-based storage instead of database storage:
+
+```python
+# settings.py
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = False  # Disable database storage
+GOOGLE_OAUTH_STORE_TOKENS = True  # Enable session storage
 ```
 
 Then access tokens in your views:
@@ -326,6 +448,8 @@ def my_view(request):
     # Use tokens to make Google API calls
     # ...
 ```
+
+**Note:** Session storage is less reliable and doesn't support automatic token refresh.
 
 ### Extending User Creation
 
@@ -398,8 +522,10 @@ All settings are optional and have sensible defaults:
 | `GOOGLE_OAUTH_CLIENT_SECRET` | `""` | Google OAuth Client Secret (required) |
 | `GOOGLE_OAUTH_REDIRECT_URIS` | `["http://localhost:8000/api/googler/callback"]` | Authorized redirect URIs |
 | `GOOGLE_OAUTH_SCOPES` | `["openid", "email", "profile"]` | OAuth scopes to request |
-| `GOOGLE_OAUTH_STORE_TOKENS` | `False` | Store tokens in session |
+| `GOOGLE_OAUTH_SAVE_TOKENS_TO_DB` | `True` | Save tokens to database (recommended) |
+| `GOOGLE_OAUTH_STORE_TOKENS` | `False` | Store tokens in session (legacy) |
 | `GOOGLE_OAUTH_RETURN_TOKENS` | `False` | Return Google tokens in API response |
+| `GOOGLE_OAUTH_REVOKE_ON_LOGOUT` | `False` | Revoke tokens when user logs out |
 | `LOGIN_URL` | `"/login/"` | Redirect URL on OAuth errors |
 
 ### Rate Limiting

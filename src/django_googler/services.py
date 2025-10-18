@@ -120,6 +120,250 @@ class GoogleOAuthService:
             if credentials.expiry:
                 request.session["google_token_expiry"] = credentials.expiry.isoformat()
 
+    @staticmethod
+    def save_user_token(
+        user,
+        credentials,
+        google_id: Optional[str] = None,
+        scopes: Optional[list[str]] = None,
+    ):
+        """
+        Save or update Google OAuth tokens for a user in the database.
+
+        Args:
+            user: Django user instance
+            credentials: Google OAuth credentials object
+            google_id: Google's unique user identifier (sub claim)
+            scopes: List of OAuth scopes granted
+
+        Returns:
+            GoogleOAuthToken instance
+
+        Example:
+            token = GoogleOAuthService.save_user_token(
+                user=request.user,
+                credentials=flow.credentials,
+                google_id=id_info.get('sub'),
+                scopes=['email', 'profile']
+            )
+        """
+        from django_googler.models import GoogleOAuthToken
+
+        # Get or create token record
+        token, created = GoogleOAuthToken.objects.get_or_create(user=user)
+
+        # Update token fields
+        token.access_token = credentials.token
+        token.token_expiry = credentials.expiry
+
+        if credentials.refresh_token:
+            token.refresh_token = credentials.refresh_token
+
+        if credentials.id_token:
+            token.id_token = credentials.id_token
+
+        if google_id:
+            token.google_id = google_id
+
+        if scopes:
+            token.set_scopes_list(scopes)
+        elif hasattr(credentials, "scopes") and credentials.scopes:
+            token.set_scopes_list(list(credentials.scopes))
+
+        token.save()
+
+        action = "Created" if created else "Updated"
+        logger.info(f"{action} OAuth token for user: {user.email}")
+
+        return token
+
+    @staticmethod
+    def get_user_token(user):
+        """
+        Get the OAuth token for a user.
+
+        Args:
+            user: Django user instance
+
+        Returns:
+            GoogleOAuthToken instance or None
+
+        Example:
+            token = GoogleOAuthService.get_user_token(request.user)
+            if token and token.is_valid:
+                # Use token.access_token for API calls
+                pass
+        """
+        from django_googler.models import GoogleOAuthToken
+
+        try:
+            return GoogleOAuthToken.objects.get(user=user)
+        except GoogleOAuthToken.DoesNotExist:
+            return None
+
+    @staticmethod
+    def refresh_user_token(token_or_user):
+        """
+        Refresh an expired access token using the refresh token.
+
+        Args:
+            token_or_user: Either a GoogleOAuthToken instance or User instance
+
+        Returns:
+            Updated GoogleOAuthToken instance
+
+        Raises:
+            ValueError: If no refresh token is available
+            Exception: If token refresh fails
+
+        Example:
+            try:
+                token = GoogleOAuthService.get_user_token(request.user)
+                if token and token.is_expired():
+                    token = GoogleOAuthService.refresh_user_token(token)
+            except ValueError:
+                # No refresh token available, user needs to re-authenticate
+                pass
+        """
+        import google.auth.transport.requests
+        from google.oauth2.credentials import Credentials
+
+        from django_googler.models import GoogleOAuthToken
+
+        # Handle both token and user inputs
+        if isinstance(token_or_user, GoogleOAuthToken):
+            token = token_or_user
+        else:
+            token = GoogleOAuthService.get_user_token(token_or_user)
+            if not token:
+                raise ValueError("No token found for user")
+
+        if not token.refresh_token:
+            raise ValueError("No refresh token available. User must re-authenticate.")
+
+        try:
+            # Create credentials object from stored token
+            credentials = Credentials(
+                token=token.access_token,
+                refresh_token=token.refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", None),
+                client_secret=getattr(settings, "GOOGLE_OAUTH_CLIENT_SECRET", None),
+                scopes=token.get_scopes_list(),
+            )
+
+            # Refresh the token
+            request = google.auth.transport.requests.Request()
+            credentials.refresh(request)
+
+            # Update stored token
+            token.access_token = credentials.token
+            token.token_expiry = credentials.expiry
+            token.save()
+
+            logger.info(f"Refreshed OAuth token for user: {token.user.email}")
+
+            return token
+
+        except Exception as e:
+            logger.error(
+                f"Failed to refresh token for {token.user.email}: {str(e)}",
+                exc_info=True,
+            )
+            raise
+
+    @staticmethod
+    def revoke_user_token(user):
+        """
+        Revoke a user's Google OAuth token and delete it from database.
+
+        Args:
+            user: Django user instance
+
+        Returns:
+            True if token was revoked, False if no token existed
+
+        Example:
+            # On logout, revoke the user's token
+            GoogleOAuthService.revoke_user_token(request.user)
+        """
+        import requests
+
+        token = GoogleOAuthService.get_user_token(user)
+        if not token:
+            return False
+
+        # Try to revoke the token with Google
+        if token.access_token:
+            try:
+                revoke_url = "https://oauth2.googleapis.com/revoke"
+                response = requests.post(
+                    revoke_url,
+                    params={"token": token.access_token},
+                    headers={"content-type": "application/x-www-form-urlencoded"},
+                )
+
+                if response.status_code == 200:
+                    logger.info(f"Revoked Google token for user: {user.email}")
+                else:
+                    logger.warning(
+                        f"Failed to revoke Google token for {user.email}: "
+                        f"{response.status_code}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Error revoking Google token for {user.email}: {str(e)}"
+                )
+
+        # Delete from database regardless of revocation success
+        token.delete()
+        logger.info(f"Deleted OAuth token for user: {user.email}")
+
+        return True
+
+    @staticmethod
+    def get_valid_token(user):
+        """
+        Get a valid (non-expired) access token for a user.
+
+        This method will automatically refresh the token if it's expired
+        and a refresh token is available.
+
+        Args:
+            user: Django user instance
+
+        Returns:
+            Tuple of (access_token: str, token_expiry: datetime) or (None, None)
+
+        Example:
+            access_token, expiry = GoogleOAuthService.get_valid_token(request.user)
+            if access_token:
+                # Use access_token for API calls
+                headers = {'Authorization': f'Bearer {access_token}'}
+                response = requests.get(
+                    'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+                    headers=headers
+                )
+        """
+        token = GoogleOAuthService.get_user_token(user)
+
+        if not token:
+            return None, None
+
+        # If token is expired and can be refreshed, refresh it
+        if token.is_expired() and token.can_refresh:
+            try:
+                token = GoogleOAuthService.refresh_user_token(token)
+            except Exception as e:
+                logger.error(f"Failed to refresh token: {str(e)}")
+                return None, None
+
+        # Return token if valid
+        if token.is_valid:
+            return token.access_token, token.token_expiry
+
+        return None, None
+
 
 class UserService:
     """Service class for user management operations."""

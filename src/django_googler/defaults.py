@@ -26,7 +26,11 @@ DEFAULTS = {
     "GOOGLE_OAUTH_STATE": None,
     "GOOGLE_OAUTH_AUTH_URI": "https://accounts.google.com/o/oauth2/auth",
     "GOOGLE_OAUTH_TOKEN_URI": "https://oauth2.googleapis.com/token",
+    # Token handling settings
     "GOOGLE_OAUTH_RETURN_TOKENS": False,  # Return Google tokens in API response
+    "GOOGLE_OAUTH_STORE_TOKENS": False,  # Store tokens in session
+    "GOOGLE_OAUTH_SAVE_TOKENS_TO_DB": True,  # Save tokens to database
+    "GOOGLE_OAUTH_REVOKE_ON_LOGOUT": False,  # Revoke tokens on logout
 }
 
 
@@ -52,3 +56,10 @@ GOOGLE_OAUTH_STATE = get_django_google_setting("GOOGLE_OAUTH_STATE")
 GOOGLE_OAUTH_AUTH_URI = get_django_google_setting("GOOGLE_OAUTH_AUTH_URI")
 GOOGLE_OAUTH_TOKEN_URI = get_django_google_setting("GOOGLE_OAUTH_TOKEN_URI")
 GOOGLE_OAUTH_RETURN_TOKENS = get_django_google_setting("GOOGLE_OAUTH_RETURN_TOKENS")
+GOOGLE_OAUTH_STORE_TOKENS = get_django_google_setting("GOOGLE_OAUTH_STORE_TOKENS")
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = get_django_google_setting(
+    "GOOGLE_OAUTH_SAVE_TOKENS_TO_DB"
+)
+GOOGLE_OAUTH_REVOKE_ON_LOGOUT = get_django_google_setting(
+    "GOOGLE_OAUTH_REVOKE_ON_LOGOUT"
+)

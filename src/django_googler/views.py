@@ -274,6 +274,21 @@ class GoogleOAuthCallbackAPIView(APIView):
             # Store OAuth tokens in session if configured
             GoogleOAuthService.store_tokens_in_session(request, credentials)
 
+            # Save OAuth tokens to database
+            from django_googler.defaults import GOOGLE_OAUTH_SAVE_TOKENS_TO_DB
+
+            if GOOGLE_OAUTH_SAVE_TOKENS_TO_DB:
+                GoogleOAuthService.save_user_token(
+                    user=user,
+                    credentials=credentials,
+                    google_id=user_info.get("google_id"),
+                    scopes=(
+                        list(credentials.scopes)
+                        if hasattr(credentials, "scopes")
+                        else None
+                    ),
+                )
+
             # Clean up OAuth state
             OAuthFlowService.clear_state(request)
 
@@ -365,6 +380,15 @@ class GoogleOAuthLogoutAPIView(APIView):
         request.session.pop("google_token_expiry", None)
         request.session.pop("oauth_state", None)
         request.session.pop("oauth_next", None)
+
+        # Optionally revoke Google OAuth token
+        from django_googler.defaults import GOOGLE_OAUTH_REVOKE_ON_LOGOUT
+
+        if GOOGLE_OAUTH_REVOKE_ON_LOGOUT:
+            try:
+                GoogleOAuthService.revoke_user_token(request.user)
+            except Exception as e:
+                logger.warning(f"Failed to revoke token on logout: {str(e)}")
 
         logger.info(f"User {request.user.email} logged out")
 
@@ -486,6 +510,21 @@ class GoogleOAuthCallbackView(View):
 
             # Store OAuth tokens in session if configured
             GoogleOAuthService.store_tokens_in_session(request, credentials)
+
+            # Save OAuth tokens to database
+            from django_googler.defaults import GOOGLE_OAUTH_SAVE_TOKENS_TO_DB
+
+            if GOOGLE_OAUTH_SAVE_TOKENS_TO_DB:
+                GoogleOAuthService.save_user_token(
+                    user=user,
+                    credentials=credentials,
+                    google_id=user_info.get("google_id"),
+                    scopes=(
+                        list(credentials.scopes)
+                        if hasattr(credentials, "scopes")
+                        else None
+                    ),
+                )
 
             # Log the user in
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")

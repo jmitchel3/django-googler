@@ -203,7 +203,7 @@ wheels = [
 
 [[package]]
 name = "django-googler"
-version = "0.0.3"
+version = "0.0.4"
 source = { editable = "." }
 dependencies = [
     { name = "django" },
@@ -216,6 +216,7 @@ dependencies = [
 dev = [
     { name = "pip" },
     { name = "pre-commit" },
+    { name = "python-decouple" },
     { name = "rav" },
 ]
 test = [
@@ -236,6 +237,7 @@ requires-dist = [
 dev = [
     { name = "pip", specifier = ">=25.2" },
     { name = "pre-commit", specifier = ">=4.3" },
+    { name = "python-decouple", specifier = ">=3.8" },
     { name = "rav", specifier = ">=0.1.1" },
 ]
 test = [
@@ -478,6 +480,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/fb/55d580352db26eb3d59ad50c64321ddfe228d3d8ac107db05387a2fadf3a/pytest_django-4.11.1.tar.gz", hash = "sha256:a949141a1ee103cb0e7a20f1451d355f83f5e4a5d07bdd4dcfdd1fd0ff227991", size = 86202, upload-time = "2025-04-03T18:56:09.338Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/ac/bd0608d229ec808e51a21044f3f2f27b9a37e7a0ebaca7247882e67876af/pytest_django-4.11.1-py3-none-any.whl", hash = "sha256:1b63773f648aa3d8541000c26929c1ea63934be1cfa674c76436966d73fe6a10", size = 25281, upload-time = "2025-04-03T18:56:07.678Z" },
+]
+
+[[package]]
+name = "python-decouple"
+version = "3.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/97/373dcd5844ec0ea5893e13c39a2c67e7537987ad8de3842fe078db4582fa/python-decouple-3.8.tar.gz", hash = "sha256:ba6e2657d4f376ecc46f77a3a615e058d93ba5e465c01bbe57289bfb7cce680f", size = 9612, upload-time = "2023-03-01T19:38:38.143Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a2/d4/9193206c4563ec771faf2ccf54815ca7918529fe81f6adb22ee6d0e06622/python_decouple-3.8-py3-none-any.whl", hash = "sha256:d0d45340815b25f4de59c974b855bb38d03151d81b037d9e3f463b0c9f8cbd66", size = 9947, upload-time = "2023-03-01T19:38:36.015Z" },
 ]
 
 [[package]]
