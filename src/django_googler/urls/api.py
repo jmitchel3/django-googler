@@ -1,6 +1,6 @@
 from django.urls import path
 
-from django_googler.views import (
+from django_googler.views_api import (
     CurrentUserAPIView,
     GoogleOAuthCallbackAPIView,
     GoogleOAuthLoginAPIView,
@@ -13,6 +13,6 @@ urlpatterns = [
     path(
         "google/callback/", GoogleOAuthCallbackAPIView.as_view(), name="google-callback"
     ),
+    path("google/logout/", GoogleOAuthLogoutAPIView.as_view(), name="google-logout"),
     path("me/", CurrentUserAPIView.as_view(), name="current-user"),
-    path("logout/", GoogleOAuthLogoutAPIView.as_view(), name="logout"),
 ]

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from django_googler.views import GoogleOAuthCallbackView, GoogleOAuthLoginView
+from django_googler.views_default import GoogleOAuthCallbackView, GoogleOAuthLoginView
 
 app_name = "django_googler"
 urlpatterns = [

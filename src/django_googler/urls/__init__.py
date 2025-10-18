@@ -15,13 +15,13 @@ Usage:
     from django.urls import include, path
 
     urlpatterns = [
-        path('api/auth/google/', include('django_googler.urls.drf')),
+        path('api/auth/google/', include('django_googler.urls.api')),
     ]
 
     # Or use both
     urlpatterns = [
         path('auth/google/', include('django_googler.urls.default')),
-        path('api/auth/google/', include('django_googler.urls.drf')),
+        path('api/auth/google/', include('django_googler.urls.api')),
     ]
 """
 

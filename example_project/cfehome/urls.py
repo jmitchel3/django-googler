@@ -23,5 +23,5 @@ urlpatterns = [
     # Regular Django OAuth views (redirects)
     path("auth/", include("django_googler.urls.default")),
     # Django Rest Framework OAuth API views (JSON responses)
-    path("api/auth/", include("django_googler.urls.drf")),
+    path("api/auth/", include("django_googler.urls.api")),
 ]
