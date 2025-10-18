@@ -33,11 +33,15 @@ class GoogleOAuthCallbackRequestSerializer(serializers.Serializer):
 class UserSerializer(serializers.Serializer):
     """User information serializer."""
 
-    id = serializers.IntegerField(read_only=True)
-    email = serializers.EmailField(read_only=True)
-    username = serializers.CharField(read_only=True)
-    first_name = serializers.CharField(read_only=True)
-    last_name = serializers.CharField(read_only=True)
+    def __init__(self, *args, **kwargs):
+        from django.contrib.auth import get_user_model
+
+        self.Meta.model = get_user_model()
+        super().__init__(*args, **kwargs)
+
+    class Meta:
+        model = None  # Will be set in __init__
+        fields = ["id", "email", "username", "first_name", "last_name"]
 
 
 class GoogleTokensSerializer(serializers.Serializer):
@@ -59,10 +63,17 @@ class GoogleTokensSerializer(serializers.Serializer):
 class GoogleOAuthCallbackResponseSerializer(serializers.Serializer):
     """Response serializer for OAuth callback endpoint."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Define user field here to avoid AppRegistryNotReady when module loads
+        if "user" not in self.fields:
+            self.fields["user"] = UserSerializer(
+                help_text="Authenticated user information"
+            )
+
     token = serializers.CharField(
         help_text="DRF authentication token for backend API calls"
     )
-    user = UserSerializer(help_text="Authenticated user information")
     google_tokens = GoogleTokensSerializer(
         required=False,
         help_text=("Google OAuth tokens " "(only if GOOGLE_OAUTH_RETURN_TOKENS=True)"),

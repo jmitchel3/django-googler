@@ -9,6 +9,9 @@ To override any setting, add it to your Django settings.py:
     GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
     GOOGLE_OAUTH_REDIRECT_URIS = ["http://localhost:8000/api/googler/callback"]
     GOOGLE_OAUTH_SCOPES = ["openid", "email", "profile"]
+    GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME = "django_googler_api:google-login"
+    GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME = "django_googler_api:google-callback"
+    DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = False
 """
 
 from django.conf import settings
@@ -31,6 +34,10 @@ DEFAULTS = {
     "GOOGLE_OAUTH_STORE_TOKENS": False,  # Store tokens in session
     "GOOGLE_OAUTH_SAVE_TOKENS_TO_DB": True,  # Save tokens to database
     "GOOGLE_OAUTH_REVOKE_ON_LOGOUT": False,  # Revoke tokens on logout
+    # URL names for OAuth redirects
+    "GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME": "django_googler_api:google-login",
+    "GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME": "django_googler_api:google-callback",
+    "DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK": False,
 }
 
 
@@ -62,4 +69,13 @@ GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = get_django_google_setting(
 )
 GOOGLE_OAUTH_REVOKE_ON_LOGOUT = get_django_google_setting(
     "GOOGLE_OAUTH_REVOKE_ON_LOGOUT"
+)
+GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME = get_django_google_setting(
+    "GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME"
+)
+GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME = get_django_google_setting(
+    "GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME"
+)
+DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = get_django_google_setting(
+    "DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK"
 )

@@ -137,6 +137,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # https://console.cloud.google.com/apis/credentials
 GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default=None)
 GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET", default=None)
+DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = True
 
 # Optional: Override default redirect URIs
 # Default: ["http://localhost:8000/api/googler/callback"]

@@ -1,5 +1,6 @@
 import logging
 
+from oauthlib.oauth2.rfc6749.errors import InvalidGrantError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -50,7 +51,9 @@ class GoogleOAuthLoginAPIView(OAuthFlowInitMixin, APIView):
 
     def get_redirect_uri_name(self) -> str:
         """Get the URL name for the OAuth callback."""
-        return "django_googler_api:google-callback-api"
+        from django_googler.defaults import GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME
+
+        return GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME
 
     def get(self, request: Request) -> Response:
         """Handle GET request to start OAuth flow."""
@@ -63,6 +66,7 @@ class GoogleOAuthLoginAPIView(OAuthFlowInitMixin, APIView):
                 data={
                     "authorization_url": authorization_url,
                     "state": state,
+                    "redirect_uri": self.build_redirect_uri(request),
                 }
             )
             serializer.is_valid(raise_exception=True)
@@ -133,13 +137,30 @@ class GoogleOAuthCallbackAPIView(
 
     def get_redirect_uri_name(self) -> str:
         """Get the URL name for the OAuth callback."""
-        return "django_googler_api:google-callback-api"
+        from django_googler.defaults import GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME
 
-    def post(self, request: Request) -> Response:
+        return GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME
+
+    def get(self, request: Request) -> Response:
+        """Handle GET request with OAuth callback data from client."""
+        from django_googler.defaults import DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK
+
+        if not DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK:
+            return Response(
+                {"error": "GET requests are not allowed on this endpoint"},
+                status=status.HTTP_405_METHOD_NOT_ALLOWED,
+            )
+
+        data = request.query_params
+        return self.post(request, data=data)
+
+    def post(self, request: Request, data: dict = None) -> Response:
         """Handle POST request with OAuth callback data from client."""
         try:
             # Validate request data
-            request_serializer = GoogleOAuthCallbackRequestSerializer(data=request.data)
+            request_serializer = GoogleOAuthCallbackRequestSerializer(
+                data=request.data or data
+            )
             request_serializer.is_valid(raise_exception=True)
 
             code = request_serializer.validated_data["code"]
@@ -159,13 +180,7 @@ class GoogleOAuthCallbackAPIView(
             # Build response
             response_data = {
                 "token": token.key,
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                },
+                "user": user,
             }
 
             # Optionally include Google tokens if configured
@@ -174,12 +189,8 @@ class GoogleOAuthCallbackAPIView(
                     credentials
                 )
 
-            # Validate and return response
-            response_serializer = GoogleOAuthCallbackResponseSerializer(
-                data=response_data
-            )
-            response_serializer.is_valid(raise_exception=True)
-
+            # Return response
+            response_serializer = GoogleOAuthCallbackResponseSerializer(response_data)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
 
         except ValueError as e:
@@ -187,6 +198,14 @@ class GoogleOAuthCallbackAPIView(
             logger.warning(f"Validation error in OAuth callback: {str(e)}")
             return Response(
                 {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except InvalidGrantError as e:
+            logger.error(
+                f"Invalid grant error in OAuth callback: {str(e)}", exc_info=True
+            )
+            return Response(
+                {"error": "Invalid grant error", "detail": str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:

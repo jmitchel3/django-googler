@@ -10,8 +10,26 @@ from typing import Any, Optional
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _make_aware(dt):
+    """
+    Ensure a datetime is timezone-aware.
+
+    Args:
+        dt: datetime object or None
+
+    Returns:
+        Timezone-aware datetime or None
+    """
+    if dt is None:
+        return None
+    if timezone.is_aware(dt):
+        return dt
+    return timezone.make_aware(dt)
 
 
 class GoogleOAuthService:
@@ -154,7 +172,7 @@ class GoogleOAuthService:
 
         # Update token fields
         token.access_token = credentials.token
-        token.token_expiry = credentials.expiry
+        token.token_expiry = _make_aware(credentials.expiry)
 
         if credentials.refresh_token:
             token.refresh_token = credentials.refresh_token
@@ -258,7 +276,7 @@ class GoogleOAuthService:
 
             # Update stored token
             token.access_token = credentials.token
-            token.token_expiry = credentials.expiry
+            token.token_expiry = _make_aware(credentials.expiry)
             token.save()
 
             logger.info(f"Refreshed OAuth token for user: {token.user.email}")
