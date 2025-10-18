@@ -46,7 +46,10 @@ GOOGLE_OAUTH_CLIENT_SECRET = "your-client-secret"
 from django.urls import path, include
 
 urlpatterns = [
+    # Django Rest Framework OAuth API views
     path("api/auth/", include("django_googler.urls.drf")),
+    # Standard Django OAuth views (non django rest framework)
+    path("auth/", include("django_googler.urls.default")),
 ]
 ```
 
@@ -62,7 +65,55 @@ Done! You now have these endpoints:
 - `GET /api/auth/me/` - Get current user (requires JWT)
 - `POST /api/auth/logout/` - Logout (requires JWT)
 
+You can also use the Django views directly:
+- `GET /auth/google/login/` - To automatically start Google OAuth which will automatically redirect you to `/auth/google/callback/`
+- `GET /auth/google/callback/` - To handle Google's callback
+- To `logout` you'll use a standard Django logout view or logout method to end the User's session
+
 ## Usage
+
+### API Examples:
+
+```bash
+curl http://localhost:8000/api/auth/google/login/
+```
+Yields:
+
+```json
+{
+  "authorization_url": "https://accounts.google.com/...",
+  "state": "..."
+}
+```
+Opening `authorization_url` in a new tab will start the Google OAuth flow and automatically redirect you to `/api/auth/google/callback/`. If you set `DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = True` in `settings.py`, your automatic redirect to `/api/auth/googler/callback/` will automatically provider your auth tokens in the response such as:
+
+```json
+{
+  "access": "eyJ0eXAiOiJKV1Q...",  // JWT access token (short-lived)
+  "refresh": "eyJ0eXAiOiJKV1Q...", // JWT refresh token (long-lived)
+  "user": {
+    "id": 1,
+    "email": "user@example.com",
+    "username": "user",
+    "first_name": "John",
+    "last_name": "Doe"
+  }
+}
+```
+
+From here you can do an authenticated request to `/api/auth/me/` to get the user's information:
+```bash
+curl http://localhost:8000/api/auth/me/ \
+  -H "Authorization: Bearer <access_token>"
+```
+
+To refresh the access token, you can use the `/api/auth/google/refresh/` endpoint:
+```bash
+curl -X POST http://localhost:8000/api/auth/google/refresh/ \
+  -H "Content-Type: application/json" \
+  -d '{"refresh": "<refresh_token>"}'
+```
+This is a standard JWT refresh endpoint provided by [rest_framework_simplejwt](https://django-rest-framework-simplejwt.readthedocs.io/) with `TokenRefreshView`.
 
 ### Frontend Flow
 
@@ -194,14 +245,49 @@ GOOGLE_OAUTH_SCOPES = [
 
 ## Google Cloud Setup
 
+For Development:
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project
-3. Enable **Google+ API**
-4. Create **OAuth 2.0 Client ID** credentials
-5. Add authorized redirect URIs:
-   - Development: `http://localhost:8000/api/auth/google/callback/`
-   - Production: `https://yourdomain.com/api/auth/google/callback/`
-6. Copy Client ID and Secret to your Django settings
+3. Go to **Google Auth Platform**
+4. Navigate to **Clients** > **+Create Client**
+
+For Development use:
+
+- **Application type**: Web application
+- **Name**: Django Googler Dev
+- **Authorized redirect URIs**:
+  - `http://localhost:8000/api/auth/google/callback/`
+  - `http://localhost:8000/auth/google/callback/` (frontend handler for Django-based frontend)
+  - `http://localhost:3000/auth/google/callback/` (frontend handler for React, Next.js or Vue)
+  - Any others you might need during development
+
+For Production use:
+
+- **Application type**: Web application
+- **Name**: Django Googler Prod
+- **Redirect URIs**:
+  - `https://yourdomain.com/api/auth/google/callback/`
+  - `https://yourdomain.com/auth/google/callback/` (frontend handler for Django or Next.js/React/Vue frontend)
+  - Any others you might need (adding more is fine especially if you have multiple frontend frameworks)
+
+After you configure it, click **Create** and for _each environment_ (prod/dev) grab:
+
+- **Client ID** (such as `django-googler-dev.apps.googleusercontent.com` and `django-googler-prod.apps.googleusercontent.com`)
+- **Client Secret**
+
+For dev, update your `.env` file with:
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID=django-googler-dev.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=your-dev-client-secret
+```
+
+For prod, update your runtime secrets with:
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID=django-googler-prod.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=your-prod-client-secret
+```
 
 ## Making Google API Calls
 
