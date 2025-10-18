@@ -59,14 +59,17 @@ class GoogleOAuthLoginAPIView(OAuthFlowInitMixin, APIView):
         """Handle GET request to start OAuth flow."""
         try:
             # Initialize OAuth flow using mixin
-            authorization_url, state = self.init_oauth_flow(request)
+            redirect_uri = request.GET.get("redirect_uri") or self.build_redirect_uri(
+                request
+            )
+            authorization_url, state = self.init_oauth_flow(request, redirect_uri)
 
             # Validate and return using serializer
             serializer = GoogleOAuthLoginResponseSerializer(
                 data={
                     "authorization_url": authorization_url,
                     "state": state,
-                    "redirect_uri": self.build_redirect_uri(request),
+                    "redirect_uri": redirect_uri,
                 }
             )
             serializer.is_valid(raise_exception=True)

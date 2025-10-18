@@ -38,6 +38,9 @@ DEFAULTS = {
     "GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME": "django_googler_api:google-login",
     "GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME": "django_googler_api:google-callback",
     "DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK": False,
+    # Throttle rates
+    "GOOGLE_OAUTH_LOGIN_THROTTLE_RATE": "30/hour",
+    "GOOGLE_OAUTH_CALLBACK_THROTTLE_RATE": "100/hour",
 }
 
 
@@ -78,4 +81,10 @@ GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME = get_django_google_setting(
 )
 DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = get_django_google_setting(
     "DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK"
+)
+GOOGLE_OAUTH_LOGIN_THROTTLE_RATE = get_django_google_setting(
+    "GOOGLE_OAUTH_LOGIN_THROTTLE_RATE"
+)
+GOOGLE_OAUTH_CALLBACK_THROTTLE_RATE = get_django_google_setting(
+    "GOOGLE_OAUTH_CALLBACK_THROTTLE_RATE"
 )
