@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "django-googler"
-version = "0.0.8"
+version = "0.0.9"
 description = "Django Googler is a simple way to integrate Google Auth Platform with your Django project."
 readme = "README.md"
 keywords = [ "auth", "django", "djangorestframework", "google", "oauth", "oauth2", "oauthlib" ]
