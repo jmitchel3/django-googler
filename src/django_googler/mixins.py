@@ -210,7 +210,7 @@ class OAuthCallbackProcessingMixin:
         if not email:
             raise ValueError("No email provided by Google")
 
-        user, _ = UserService.get_or_create_user(
+        return UserService.get_or_create_user(
             email=email,
             name=user_info.get("name"),
             google_id=user_info.get("google_id"),
@@ -218,7 +218,6 @@ class OAuthCallbackProcessingMixin:
             given_name=user_info.get("given_name"),
             family_name=user_info.get("family_name"),
         )
-        return user
 
     def store_user_tokens(
         self, request, user, credentials: Credentials, user_info: dict[str, Any]
