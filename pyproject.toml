@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "django-googler"
-version = "0.0.1"
+version = "0.0.3"
 description = "Django Googler is a simple way to integrate Google Auth Platform with your Django project."
 readme = "README.md"
 keywords = [ "auth", "django", "djangorestframework", "google", "oauth", "oauth2", "oauthlib" ]
@@ -43,6 +43,14 @@ test = [
   "pytest>=8.3",
   "pytest-django>=4.9",
 ]
+
+[tool.black]
+line-length = 88
+target-version = [ 'py312' ]
+
+[tool.isort]
+profile = "black"
+line_length = 88
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
