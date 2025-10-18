@@ -1,139 +1,45 @@
 # Django Googler
 
-Django Googler is a simple way to integrate Google OAuth Platform with your Django project. It provides both **Django Rest Framework** API views and **regular Django views** for handling Google OAuth authentication flows.
+Simple Google OAuth authentication for Django. Returns JWT tokens for your API.
 
-## Features
+## What It Does
 
-- 🔐 **Google OAuth 2.0 Integration** - Complete OAuth flow implementation
-- 🎯 **Dual View Support** - Both DRF API views and regular Django views
-- 🔧 **Service Layer Architecture** - Clean separation of business logic
-- ⚙️ **Highly Configurable** - Override settings via Django settings
-- 🛡️ **CSRF Protection** - Built-in state verification
-- 👥 **Automatic User Management** - Create or update users from Google info
-- 💾 **Database Token Storage** - Persistent OAuth token storage with auto-refresh
-- 🔄 **Token Management** - Automatic token refresh when expired
-- 🎛️ **Django Admin Integration** - Manage OAuth tokens via Django admin
-- 📦 **Zero Configuration** - Works out of the box with sensible defaults
-- 🚦 **Rate Limiting** - Built-in throttling to prevent abuse
-- ✅ **Settings Validation** - Django system checks for configuration
-- 📝 **DRF Serializers** - Proper request/response validation
+1. User clicks "Sign in with Google"
+2. Google handles authentication
+3. Your Django app gets JWT tokens + user info
+4. Use JWT tokens for authenticated API requests
 
 ## Installation
+
+```bash
+uv add django-googler
+```
+
+or
 
 ```bash
 pip install django-googler
 ```
 
-## Dependencies
+## Quick Setup
 
-- [Python 3.12+](https://www.python.org/)
-- [Django 5.2+](https://docs.djangoproject.com/)
-- [Django Rest Framework 3.15+](https://www.django-rest-framework.org/)
-- [google-auth 2.41+](https://pypi.org/project/google-auth/)
-- [google-auth-oauthlib 1.2+](https://pypi.org/project/google-auth-oauthlib/)
-
-## Quick Start
-
-### 1. Add to Installed Apps
+### 1. Add to `settings.py`
 
 ```python
-# settings.py
 INSTALLED_APPS = [
     # ...
     "rest_framework",
-    "rest_framework.authtoken",  # Required for API token authentication
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",  # Optional: for logout
     "django_googler",
 ]
+
+# Get these from Google Cloud Console
+GOOGLE_OAUTH_CLIENT_ID = "your-client-id"
+GOOGLE_OAUTH_CLIENT_SECRET = "your-client-secret"
 ```
 
-### 2. Configure Google OAuth Settings
-
-Get your credentials from [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
-
-```python
-# settings.py
-import os
-
-# Required: Get these from Google Cloud Console
-GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
-
-# Optional: Override default redirect URIs
-GOOGLE_OAUTH_REDIRECT_URIS = [
-    "http://localhost:8000/auth/google/callback/",
-    "http://localhost:8000/api/auth/google/callback/",
-]
-
-# Optional: Override default scopes
-GOOGLE_OAUTH_SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-]
-
-# Optional: Save OAuth tokens to database (recommended for persistent storage)
-# Default: True
-GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
-
-# Optional: Store OAuth tokens in session (legacy, use database storage instead)
-# Default: False
-GOOGLE_OAUTH_STORE_TOKENS = False
-
-# Optional: Return Google tokens in API callback response (for frontend Google API calls)
-# Default: False (only returns DRF token)
-GOOGLE_OAUTH_RETURN_TOKENS = False
-
-# Optional: Revoke Google OAuth tokens on logout
-# Default: False
-GOOGLE_OAUTH_REVOKE_ON_LOGOUT = False
-
-# Optional: Login URL for error redirects
-# Default: "/login/"
-LOGIN_URL = "/admin/login/"
-```
-
-### 3. Run Migrations
-
-```bash
-python manage.py migrate
-```
-
-This creates the necessary database tables for:
-- DRF authentication tokens (`authtoken`)
-- Google OAuth token storage (`django_googler`)
-
-### 4. Add URL Patterns
-
-Choose between **Regular Django Views** or **Django Rest Framework API Views** (or use both!):
-
-#### Regular Django Views
-
-```python
-# urls.py
-from django.urls import path, include
-
-urlpatterns = [
-    path("auth/", include("django_googler.urls.default")),
-]
-```
-
-Or explicitly:
-```python
-# urls.py
-from django.urls import path
-from django_googler import GoogleOAuthLoginView, GoogleOAuthCallbackView
-
-urlpatterns = [
-    path("auth/google/login/", GoogleOAuthLoginView.as_view(), name="google-login"),
-    path(
-        "auth/google/callback/",
-        GoogleOAuthCallbackView.as_view(),
-        name="google-callback",
-    ),
-]
-```
-
-#### Django Rest Framework API Views
+### 2. Add URLs
 
 ```python
 # urls.py
@@ -144,199 +50,172 @@ urlpatterns = [
 ]
 ```
 
-Or explicitly:
-```python
-# urls.py
-from django.urls import path
-from django_googler import (
-    GoogleOAuthLoginAPIView,
-    GoogleOAuthCallbackAPIView,
-    CurrentUserAPIView,
-    GoogleOAuthLogoutAPIView,
-)
+### 3. Run Migrations
 
-urlpatterns = [
-    path(
-        "api/auth/google/login/",
-        GoogleOAuthLoginAPIView.as_view(),
-        name="google-login-api",
-    ),
-    path(
-        "api/auth/google/callback/",
-        GoogleOAuthCallbackAPIView.as_view(),
-        name="google-callback-api",
-    ),
-    path("api/auth/me/", CurrentUserAPIView.as_view(), name="current-user"),
-    path("api/auth/logout/", GoogleOAuthLogoutAPIView.as_view(), name="logout"),
-]
+```bash
+python manage.py migrate
 ```
+
+Done! You now have these endpoints:
+- `GET /api/auth/google/login/` - Get Google OAuth URL
+- `POST /api/auth/google/callback/` - Exchange code for JWT tokens
+- `GET /api/auth/me/` - Get current user (requires JWT)
+- `POST /api/auth/logout/` - Logout (requires JWT)
 
 ## Usage
 
-### Regular Django Views (Browser Redirects)
+### Frontend Flow
 
-1. **Redirect users to the login view:**
-   ```html
-   <a href="{% url 'django_googler:google-login' %}?next=/dashboard/">Sign in with Google</a>
-   ```
+**1. Get Google OAuth URL**
 
-2. **Users are redirected to Google for authentication**
+```javascript
+const redirect_uri = 'http://localhost:3000/auth/callback';
+const apiBaseUrl = 'http://localhost:8000';
+const loginApiEndpoint = `${apiBaseUrl}/api/auth/google/login/`;
+const requestUrl = `${loginApiEndpoint}?redirect_uri=${redirect_uri}`;
+const response = await fetch(requestUrl);
+const data = await response.json();
+// data = { "authorization_url": "https://accounts.google.com/...", "state": "..." }
 
-3. **After authentication, users are redirected back and automatically logged in**
-
-The regular Django views will:
-- Create a new user if they don't exist
-- Update existing user information
-- Log the user into Django's authentication system
-- Redirect to the `next` parameter or `/` by default
-
-### Django Rest Framework API Views (JSON Responses)
-
-1. **GET the login endpoint to get the authorization URL:**
-   ```bash
-   curl http://localhost:8000/api/auth/google/login/
-   ```
-
-   Response:
-   ```json
-   {
-       "authorization_url": "https://accounts.google.com/o/oauth2/auth?...",
-       "state": "random-state-string"
-   }
-   ```
-
-2. **Redirect users to the `authorization_url`**
-
-3. **After Google redirects back with the authorization code, POST it to the callback:**
-   ```bash
-   curl -X POST http://localhost:8000/api/auth/google/callback/ \
-     -H "Content-Type: application/json" \
-     -d '{
-       "code": "4/0AY0e-g...",
-       "state": "random-state-string",
-       "redirect_uri": "http://localhost:3000/auth/callback"
-     }'
-   ```
-
-   Response (user is created/logged in and API token returned):
-   ```json
-   {
-       "token": "drf_api_token_abc123...",
-       "user": {
-           "id": 1,
-           "email": "user@example.com",
-           "username": "user",
-           "first_name": "John",
-           "last_name": "Doe"
-       }
-   }
-   ```
-
-   **Note:** Google tokens are **not** included by default. If your frontend needs to call Google APIs directly (Calendar, Drive, Gmail, etc.), set `GOOGLE_OAUTH_RETURN_TOKENS = True` in settings to include them in the response.
-
-4. **Use the returned token for authenticated requests:**
-   ```bash
-   curl http://localhost:8000/api/protected/ \
-     -H "Authorization: Token drf_api_token_abc123..."
-   ```
-
-### Additional DRF Endpoints
-
-#### Get Current User
-
-```bash
-curl http://localhost:8000/api/auth/me/ \
-  -H "Authorization: Token your-token-here"
+// Redirect user to Google
+window.location.href = data.authorization_url;
 ```
 
-Response:
-```json
-{
+**2. Handle Google's Callback**
+
+After Google redirects back to your frontend with a `code` and `state`:
+
+```javascript
+// Get the callback data from the current URL
+const currentUrl = new URL(window.location.href);
+const googleCallbackData = Object.fromEntries(currentUrl.searchParams);
+
+// Send the callback data to the backend
+const apiBaseUrl = 'http://localhost:8000';
+const callbackApiEndpoint = `${apiBaseUrl}/api/auth/google/callback/`;
+const response = await fetch(callbackApiEndpoint, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(googleCallbackData)
+});
+
+const responseData = await response.json();
+/* responseData = {
+  "access": "eyJ0eXAiOiJKV1Q...",  // JWT access token (short-lived)
+  "refresh": "eyJ0eXAiOiJKV1Q...", // JWT refresh token (long-lived)
+  "user": {
     "id": 1,
     "email": "user@example.com",
     "username": "user",
     "first_name": "John",
     "last_name": "Doe"
-}
+  }
+} */
+
+// Save tokens
+localStorage.setItem('access_token', responseData.access);
+localStorage.setItem('refresh_token', responseData.refresh);
 ```
 
-#### Logout
+**3. Make Authenticated Requests**
 
-```bash
-curl -X POST http://localhost:8000/api/auth/logout/ \
-  -H "Authorization: Token your-token-here"
+```javascript
+const apiBaseUrl = 'http://localhost:8000';
+const meApiEndpoint = `${apiBaseUrl}/api/auth/me/`;
+const response = await fetch(meApiEndpoint, {
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+  }
+});
+
+const responseData = await response.json();
+/* responseData = {
+  "id": 1,
+  "email": "user@example.com",
+  "username": "user",
+  "first_name": "John",
+  "last_name": "Doe"
+} */
 ```
 
-Response:
-```json
-{
-    "message": "Logged out successfully"
-}
+**4. Logout**
+
+```javascript
+const apiBaseUrl = 'http://localhost:8000';
+const logoutApiEndpoint = `${apiBaseUrl}/api/auth/logout/`;
+const response = await fetch(logoutApiEndpoint, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    refresh: localStorage.getItem('refresh_token')
+  })
+});
+
+localStorage.removeItem('access_token');
+localStorage.removeItem('refresh_token');
 ```
 
-This will:
-- Delete the user's DRF authentication token
-- Clear all OAuth session data (access tokens, refresh tokens, etc.)
+## Configuration
 
-## Advanced Usage
-
-### Using the Service Layer
-
-You can use the service layer directly in your own views or logic:
+### Required Settings
 
 ```python
-from django_googler import GoogleOAuthService, UserService, OAuthFlowService
-
-# Verify and process OAuth credentials
-credentials_data = GoogleOAuthService.process_credentials(credentials)
-
-# Create or update user from OAuth info
-user, _ = UserService.get_or_create_user(
-    email="user@example.com",
-    name="John Doe",
-    google_id="1234567890",
-    picture="https://...",
-)
-
-# Manage OAuth flow state
-OAuthFlowService.store_state(request, state)
-is_valid = OAuthFlowService.verify_state(request, state)
-OAuthFlowService.clear_state(request)
+GOOGLE_OAUTH_CLIENT_ID = "your-client-id"
+GOOGLE_OAUTH_CLIENT_SECRET = "your-client-secret"
 ```
 
-### Custom Scopes
+### Optional Settings
 
-Request additional Google API scopes:
+```python
+# Return Google tokens in callback response (for calling Google APIs from frontend)
+# Default: False
+GOOGLE_OAUTH_RETURN_TOKENS = False
 
-```html
-<!-- In your template -->
-<a href="{% url 'django_googler:google-login' %}?scopes=openid,email,profile,https://www.googleapis.com/auth/calendar">
-    Sign in with Google Calendar Access
-</a>
+# Revoke Google access on logout
+# Default: False
+GOOGLE_OAUTH_REVOKE_ON_LOGOUT = False
+
+# Save Google OAuth tokens to database (for backend Google API calls)
+# Default: True
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
+
+# Request additional Google API scopes
+# Default: ["openid", "email", "profile"]
+GOOGLE_OAUTH_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    # "https://www.googleapis.com/auth/calendar",  # Add if needed
+]
 ```
 
-Or for API views:
-```bash
-curl "http://localhost:8000/api/auth/google/login/?scopes=openid,email,profile"
-```
+## Google Cloud Setup
 
-### Database Token Storage (Recommended)
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project
+3. Enable **Google+ API**
+4. Create **OAuth 2.0 Client ID** credentials
+5. Add authorized redirect URIs:
+   - Development: `http://localhost:8000/api/auth/google/callback/`
+   - Production: `https://yourdomain.com/api/auth/google/callback/`
+6. Copy Client ID and Secret to your Django settings
 
-**New in v0.0.4**: OAuth tokens are now automatically saved to the database by default. This allows your backend to make Google API calls on behalf of users and automatically refresh expired tokens.
+## Making Google API Calls
 
-#### Accessing Stored Tokens
+If your backend needs to call Google APIs on behalf of users:
 
 ```python
 from django_googler.services import GoogleOAuthService
 
 
-# Get user's token
 def my_view(request):
-    # Option 1: Get valid token (auto-refreshes if expired)
+    # Get valid access token (auto-refreshes if expired)
     access_token, expiry = GoogleOAuthService.get_valid_token(request.user)
 
     if access_token:
-        # Use token to call Google APIs
         import requests
 
         headers = {"Authorization": f"Bearer {access_token}"}
@@ -344,247 +223,39 @@ def my_view(request):
             "https://www.googleapis.com/calendar/v3/calendars/primary/events",
             headers=headers,
         )
-        events = response.json()
-
-    # Option 2: Get token object directly
-    token = GoogleOAuthService.get_user_token(request.user)
-    if token:
-        if token.is_expired():
-            # Manually refresh if needed
-            token = GoogleOAuthService.refresh_user_token(token)
-
-        # Check scopes
-        if token.has_scope("https://www.googleapis.com/auth/calendar"):
-            # User has calendar access
-            pass
+        return response.json()
 ```
 
-#### Token Model
+## Using Django Views (Instead of API)
 
-The `GoogleOAuthToken` model stores:
-- Access token (for API calls)
-- Refresh token (for getting new access tokens)
-- Token expiry datetime
-- OAuth scopes granted
-- Google ID (sub claim)
-- ID token (JWT)
+If you prefer browser redirects over API calls:
 
 ```python
-from django_googler.models import GoogleOAuthToken
-
-# Get user's token
-token = GoogleOAuthToken.objects.get(user=request.user)
-
-# Check status
-if token.is_valid:
-    print("Token is valid and not expired")
-
-if token.can_refresh:
-    print("Token can be refreshed")
-
-# Get scopes
-scopes = token.get_scopes_list()
-# ['openid', 'email', 'profile']
+# urls.py
+urlpatterns = [
+    path("auth/", include("django_googler.urls.default")),
+]
 ```
 
-#### Django Admin
-
-View and manage OAuth tokens in Django admin at `/admin/django_googler/googleoauthtoken/`:
-- See token status (Valid/Expired/Invalid)
-- View granted scopes
-- Search by user email or Google ID
-- Filter by date or expiry
-- Delete tokens when needed
-
-#### Token Management
-
-```python
-from django_googler.services import GoogleOAuthService
-
-# Save/update a user's token (automatically called during OAuth flow)
-token = GoogleOAuthService.save_user_token(
-    user=request.user,
-    credentials=credentials,
-    google_id="1234567890",
-    scopes=["email", "profile"],
-)
-
-# Refresh an expired token
-token = GoogleOAuthService.refresh_user_token(request.user)
-
-# Revoke and delete a token
-GoogleOAuthService.revoke_user_token(request.user)
+Then in your template:
+```html
+<a href="{% url 'django_googler:google-login' %}?next=/dashboard/">
+    Sign in with Google
+</a>
 ```
 
-#### Configuration
-
-```python
-# settings.py
-
-# Save tokens to database (default: True)
-GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
-
-# Revoke tokens when user logs out (default: False)
-GOOGLE_OAUTH_REVOKE_ON_LOGOUT = True
-```
-
-### Legacy Session Token Storage
-
-If you prefer session-based storage instead of database storage:
-
-```python
-# settings.py
-GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = False  # Disable database storage
-GOOGLE_OAUTH_STORE_TOKENS = True  # Enable session storage
-```
-
-Then access tokens in your views:
-```python
-def my_view(request):
-    access_token = request.session.get("google_access_token")
-    refresh_token = request.session.get("google_refresh_token")
-    token_expiry = request.session.get("google_token_expiry")
-
-    # Use tokens to make Google API calls
-    # ...
-```
-
-**Note:** Session storage is less reliable and doesn't support automatic token refresh.
-
-### Extending User Creation
-
-If you need to store additional user information (like `google_id` or `picture`), you can:
-
-1. **Create a custom user model:**
-   ```python
-   from django.contrib.auth.models import AbstractUser
-
-
-   class User(AbstractUser):
-       google_id = models.CharField(max_length=255, blank=True)
-       picture = models.URLField(blank=True)
-   ```
-
-2. **Or create a user profile model:**
-   ```python
-   class UserProfile(models.Model):
-       user = models.OneToOneField(User, on_delete=models.CASCADE)
-       google_id = models.CharField(max_length=255, blank=True)
-       picture = models.URLField(blank=True)
-   ```
-
-3. **Override the UserService (recommended):**
-   ```python
-   from django_googler.services import UserService as BaseUserService
-
-
-   class CustomUserService(BaseUserService):
-       @staticmethod
-       def _create_new_user(
-           email,
-           name=None,
-           given_name=None,
-           family_name=None,
-           google_id=None,
-           picture=None,
-       ):
-           user = super()._create_new_user(
-               email, name, given_name, family_name, google_id, picture
-           )
-           # Store additional fields
-           if google_id:
-               user.google_id = google_id
-           if picture:
-               user.picture = picture
-           user.save()
-           return user
-   ```
+Users will be redirected to Google and back, then logged into Django's session.
 
 ## Architecture
 
-Django Googler follows a clean service-layer architecture:
-
-- **`views.py`** - View layer (DRF and Django views)
-- **`services.py`** - Business logic layer
-  - `GoogleOAuthService` - OAuth token processing
-  - `UserService` - User creation and management
-  - `OAuthFlowService` - OAuth state management
-- **`platform_client.py`** - Google OAuth client wrapper
-- **`defaults.py`** - Configuration and settings
-
-## Configuration Reference
-
-All settings are optional and have sensible defaults:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `GOOGLE_OAUTH_CLIENT_ID` | `""` | Google OAuth Client ID (required) |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | `""` | Google OAuth Client Secret (required) |
-| `GOOGLE_OAUTH_REDIRECT_URIS` | `["http://localhost:8000/api/googler/callback"]` | Authorized redirect URIs |
-| `GOOGLE_OAUTH_SCOPES` | `["openid", "email", "profile"]` | OAuth scopes to request |
-| `GOOGLE_OAUTH_SAVE_TOKENS_TO_DB` | `True` | Save tokens to database (recommended) |
-| `GOOGLE_OAUTH_STORE_TOKENS` | `False` | Store tokens in session (legacy) |
-| `GOOGLE_OAUTH_RETURN_TOKENS` | `False` | Return Google tokens in API response |
-| `GOOGLE_OAUTH_REVOKE_ON_LOGOUT` | `False` | Revoke tokens when user logs out |
-| `LOGIN_URL` | `"/login/"` | Redirect URL on OAuth errors |
-
-### Rate Limiting
-
-Django Googler includes built-in rate limiting for OAuth endpoints:
-- Login endpoint: 10 requests per hour
-- Callback endpoint: 20 requests per hour
-
-You can customize these rates in your Django REST Framework settings:
-
-```python
-# settings.py
-REST_FRAMEWORK = {
-    "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/hour",
-        "user": "1000/hour",
-    }
-}
-```
-
-## Error Handling
-
-The views handle various error scenarios:
-
-| Error Code | Description |
-|------------|-------------|
-| `oauth_init_failed` | Failed to initiate OAuth flow |
-| `missing_code` | Authorization code not provided by Google |
-| `invalid_state` | CSRF state verification failed |
-| `no_email` | Google didn't provide an email address |
-| `oauth_callback_failed` | General callback processing error |
-
-Access errors via query parameters:
-```python
-def login_view(request):
-    error = request.GET.get("error")
-    if error == "invalid_state":
-        messages.error(request, "Security check failed. Please try again.")
-```
-
-## Google Cloud Console Setup
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable the **Google+ API** and **People API**
-4. Go to **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID**
-5. Configure **Authorized redirect URIs**:
-   - For local development: `http://localhost:8000/auth/google/callback/`
-   - For production: `https://yourdomain.com/auth/google/callback/`
-6. Copy the **Client ID** and **Client Secret** to your Django settings
+- **Views** - Handle OAuth flow and return JWT tokens
+- **Services** - Business logic for OAuth, users, and tokens
+- **Models** - Store Google OAuth tokens in database
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+MIT License
 
 ## Support
 
-For issues and questions, please use the [GitHub issue tracker](https://github.com/jmitchel3/django-googler/issues).
+[GitHub Issues](https://github.com/jmitchel3/django-googler/issues)
