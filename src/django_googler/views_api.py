@@ -72,6 +72,20 @@ class GoogleOAuthLoginBaseAPIView(SignedStateOAuthMixin, APIView):
         }
     """
 
+    def get_scopes(self, request: Request) -> list[str]:
+        """Get custom scopes from request query parameters."""
+        scopes = request.query_params.get("scopes")
+        if scopes:
+            return scopes.split(",")
+        return None
+
+    def get_include_granted_scopes(self) -> bool:
+        """
+        Whether to include previously granted scopes in the OAuth flow without stating
+        the scopes again. Recommended when adding new scopes for a user.
+        """
+        return False
+
     def get_prompt_type(self) -> str:
         """
         Get the prompt type for the OAuth flow within Google.
