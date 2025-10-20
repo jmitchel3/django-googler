@@ -1,0 +1,34 @@
+{
+    "name": "YouTube",
+    "documentation_url": "https://developers.google.com/youtube/v3/guides/auth/installed-apps",
+    "scopes": [
+        {
+            "scope": "https://www.googleapis.com/auth/youtube",
+            "description": "Manage your YouTube account"
+        },
+        {
+            "scope": "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
+            "description": "See a list of your current active channel members, their current level, and when they became a member"
+        },
+        {
+            "scope": "https://www.googleapis.com/auth/youtube.force-ssl",
+            "description": "See, edit, and permanently delete your YouTube videos, ratings, comments and captions"
+        },
+        {
+            "scope": "https://www.googleapis.com/auth/youtube.readonly",
+            "description": "View your YouTube account"
+        },
+        {
+            "scope": "https://www.googleapis.com/auth/youtube.upload",
+            "description": "Manage your YouTube videos"
+        },
+        {
+            "scope": "https://www.googleapis.com/auth/youtubepartner",
+            "description": "View and manage your assets and associated content on YouTube"
+        },
+        {
+            "scope": "https://www.googleapis.com/auth/youtubepartner-channel-audit",
+            "description": "View and manage your assets and associated content on YouTube"
+        }
+    ]
+}

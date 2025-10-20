@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from api.views import YouTubeLoginAPIView
 from django.contrib import admin
 from django.urls import include, path
 
@@ -24,4 +25,7 @@ urlpatterns = [
     path("auth/", include("django_googler.urls.default")),
     # Django Rest Framework OAuth API views (JSON responses)
     path("api/auth/", include("django_googler.urls.api")),
+    path(
+        "api/auth/youtube/login/", YouTubeLoginAPIView.as_view(), name="youtube-login"
+    ),
 ]

@@ -56,4 +56,5 @@ def get_google_auth_url(flow: Flow) -> tuple[str, str]:
     return flow.authorization_url(
         access_type="offline",
         prompt="consent",
+        include_granted_scopes="true",
     )
