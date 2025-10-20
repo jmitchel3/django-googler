@@ -1,9 +1,9 @@
 from rest_framework.request import Request
 
-from django_googler.views_api import GoogleOAuthLoginAPIView
+from django_googler.views_api import GoogleOAuthLoginBaseAPIView
 
 
-class YouTubeConnectBaseAPIView(GoogleOAuthLoginAPIView):
+class YouTubeConnectBaseAPIView(GoogleOAuthLoginBaseAPIView):
     def get_scopes(self, request: Request) -> list[str]:
         return [
             "https://www.googleapis.com/auth/youtube.readonly",

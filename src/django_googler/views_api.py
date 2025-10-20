@@ -51,7 +51,7 @@ class CurrentUserAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class GoogleOAuthLoginAPIView(SignedStateOAuthMixin, APIView):
+class GoogleOAuthLoginBaseAPIView(SignedStateOAuthMixin, APIView):
     """
     API View to initiate Google OAuth flow with signed state.
 
@@ -71,24 +71,6 @@ class GoogleOAuthLoginAPIView(SignedStateOAuthMixin, APIView):
             "state": "eyJhbGc...:original_state_value"
         }
     """
-
-    permission_classes = []
-    authentication_classes = []
-    throttle_classes = [GoogleOAuthLoginThrottle]
-
-    def get_scopes(self, request: Request) -> list[str]:
-        """Get custom scopes from request query parameters."""
-        scopes = request.query_params.get("scopes")
-        if scopes:
-            return scopes.split(",")
-        return None
-
-    def get_include_granted_scopes(self) -> bool:
-        """
-        Whether to include previously granted scopes in the OAuth flow without stating
-        the scopes again. Recommended when adding new scopes for a user.
-        """
-        return False
 
     def get_prompt_type(self) -> str:
         """
@@ -178,48 +160,15 @@ class GoogleOAuthLoginAPIView(SignedStateOAuthMixin, APIView):
             )
 
 
-class GoogleOAuthCallbackAPIView(SignedStateOAuthMixin, TokenResponseMixin, APIView):
-    """
-    API View to handle Google OAuth callback with signed state verification.
-
-    This endpoint receives the authorization code and signed state from the client,
-    verifies the signature, exchanges it for Google tokens, creates/authenticates
-    the user, and returns JWT tokens.
-
-    Request Body (POST):
-        code: Authorization code from Google (required)
-        state: Signed state parameter from login endpoint (required)
-        redirect_uri: The redirect URI used in the OAuth flow (optional)
-
-    Returns:
-        JSON response with JWT tokens, user info, and optionally Google tokens
-
-    Example Request:
-        POST /api/auth/google/callback/
-        {
-            "code": "4/0AY0e-g...",
-            "state": "eyJhbGc...:original_state_value",
-            "redirect_uri": "http://localhost:3000/auth/google/callback"
-        }
-
-    Example Response:
-        {
-            "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-            "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-            "user": {
-                "id": 1,
-                "email": "user@example.com",
-                "username": "user",
-                "first_name": "John",
-                "last_name": "Doe"
-            }
-        }
-    """
-
+class GoogleOAuthLoginAPIView(GoogleOAuthLoginBaseAPIView):
     permission_classes = []
     authentication_classes = []
-    throttle_classes = [GoogleOAuthCallbackThrottle]
+    throttle_classes = [GoogleOAuthLoginThrottle]
 
+
+class GoogleOAuthCallbackBaseAPIView(
+    SignedStateOAuthMixin, TokenResponseMixin, APIView
+):
     def get(self, request: Request) -> Response:
         """Handle GET request with OAuth callback data from client."""
         from django_googler.defaults import DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK
@@ -440,6 +389,49 @@ class GoogleOAuthCallbackAPIView(SignedStateOAuthMixin, TokenResponseMixin, APIV
             given_name=user_info.get("given_name"),
             family_name=user_info.get("family_name"),
         )
+
+
+class GoogleOAuthCallbackAPIView(GoogleOAuthCallbackBaseAPIView):
+    """
+    API View to handle Google OAuth callback with signed state verification.
+
+    This endpoint receives the authorization code and signed state from the client,
+    verifies the signature, exchanges it for Google tokens, creates/authenticates
+    the user, and returns JWT tokens.
+
+    Request Body (POST):
+        code: Authorization code from Google (required)
+        state: Signed state parameter from login endpoint (required)
+        redirect_uri: The redirect URI used in the OAuth flow (optional)
+
+    Returns:
+        JSON response with JWT tokens, user info, and optionally Google tokens
+
+    Example Request:
+        POST /api/auth/google/callback/
+        {
+            "code": "4/0AY0e-g...",
+            "state": "eyJhbGc...:original_state_value",
+            "redirect_uri": "http://localhost:3000/auth/google/callback"
+        }
+
+    Example Response:
+        {
+            "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+            "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+            "user": {
+                "id": 1,
+                "email": "user@example.com",
+                "username": "user",
+                "first_name": "John",
+                "last_name": "Doe"
+            }
+        }
+    """
+
+    permission_classes = []
+    authentication_classes = []
+    throttle_classes = [GoogleOAuthCallbackThrottle]
 
 
 class GoogleOAuthLogoutAPIView(APIView):
