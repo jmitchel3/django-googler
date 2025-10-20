@@ -20,7 +20,9 @@ class SignedStateOAuthMixin:
     STATE_MAX_AGE = 600
 
     @staticmethod
-    def sign_state(state: str, scopes: list[str] | None = None) -> str:
+    def sign_state(
+        state: str, scopes: list[str] | None = None, extra_metadata: dict | None = None
+    ) -> str:
         """
         Sign and encode the OAuth state using Django's signing framework.
 
@@ -37,6 +39,7 @@ class SignedStateOAuthMixin:
         # Build state data dictionary
         state_data = {
             "state": state,
+            "extra_metadata": extra_metadata,
         }
         if scopes is not None:
             state_data["scopes"] = scopes
