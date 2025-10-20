@@ -45,6 +45,10 @@ def __getattr__(name):
         from django_googler.views_api import GoogleOAuthLogoutAPIView
 
         return GoogleOAuthLogoutAPIView
+    elif name == "google_oauth_success":
+        from django_googler.signals import google_oauth_success
+
+        return google_oauth_success
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -62,4 +66,6 @@ __all__ = [
     "GoogleOAuthCallbackAPIView",
     "CurrentUserAPIView",
     "GoogleOAuthLogoutAPIView",
+    # Signals
+    "google_oauth_success",
 ]

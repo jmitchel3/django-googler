@@ -329,6 +329,21 @@ class GoogleOAuthCallbackBaseAPIView(
 
         logger.info(f"User {user.email} authenticated via Google OAuth")
 
+        # Send success signal with user, scopes, and credentials
+        from django_googler.signals import google_oauth_success
+
+        granted_scopes = (
+            list(credentials.scopes) if hasattr(credentials, "scopes") else scopes or []
+        )
+        google_oauth_success.send(
+            sender=self.__class__,
+            user=user,
+            scopes=granted_scopes,
+            credentials=credentials,
+            user_created=user_created,
+            user_info=user_info,
+        )
+
         return user, user_info, credentials, user_created
 
     def exchange_code_for_credentials(
