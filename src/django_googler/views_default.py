@@ -12,6 +12,8 @@ from django_googler.services import OAuthFlowService
 
 logger = logging.getLogger(__name__)
 
+LOGIN_URL = getattr(settings, "LOGIN_URL", "/login/")
+LOGIN_REDIRECT_URL = getattr(settings, "LOGIN_REDIRECT_URL", "/")
 
 # ============================================================================
 # Regular Django Views
@@ -33,7 +35,7 @@ class GoogleOAuthLoginView(OAuthFlowInitMixin, View):
         """Handle GET request to start OAuth flow."""
         try:
             # Store the next URL if provided
-            next_url = request.GET.get("next", "/")
+            next_url = request.GET.get("next", LOGIN_REDIRECT_URL)
             OAuthFlowService.store_next_url(request, next_url)
 
             # Initialize OAuth flow using mixin
@@ -48,7 +50,7 @@ class GoogleOAuthLoginView(OAuthFlowInitMixin, View):
             logger.error(f"Error initiating OAuth flow: {str(e)}", exc_info=True)
             # Redirect to login with error message
             error_params = urlencode({"error": "oauth_init_failed"})
-            login_url = getattr(settings, "LOGIN_URL", "/login/")
+            login_url = LOGIN_URL
             return redirect(f"{login_url}?{error_params}")
 
 
@@ -90,7 +92,9 @@ class GoogleOAuthCallbackView(OAuthCallbackProcessingMixin, View):
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
             # Redirect to next URL or default
-            next_url = OAuthFlowService.get_next_url(request, default="/")
+            next_url = OAuthFlowService.get_next_url(
+                request, default=LOGIN_REDIRECT_URL
+            )
             return redirect(next_url)
 
         except ValueError as e:
@@ -116,5 +120,5 @@ class GoogleOAuthCallbackView(OAuthCallbackProcessingMixin, View):
             HttpResponse redirect
         """
         error_params = urlencode({"error": error})
-        login_url = getattr(settings, "LOGIN_URL", "/login/")
+        login_url = LOGIN_URL
         return redirect(f"{login_url}?{error_params}")
