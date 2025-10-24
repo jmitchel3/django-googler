@@ -184,6 +184,10 @@ GOOGLE_OAUTH_SCOPES = [
 # Default: False
 GOOGLE_OAUTH_STORE_TOKENS = True
 
+# Optional: Save OAuth tokens to database
+# Default: True
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
+
 # Optional: Where to redirect after OAuth failure
 # Default: "/login/"
 LOGIN_URL = "/admin/login/"

@@ -8,7 +8,11 @@ To override any setting, add it to your Django settings.py:
     GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
     GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
     GOOGLE_OAUTH_REDIRECT_URIS = ["http://localhost:8000/api/googler/callback"]
-    GOOGLE_OAUTH_SCOPES = ["openid", "email", "profile"]
+    GOOGLE_OAUTH_SCOPES = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile"
+    ]
     GOOGLE_OAUTH_LOGIN_REDIRECT_URI_NAME = "django_googler_api:google-login"
     GOOGLE_OAUTH_CALLBACK_REDIRECT_URI_NAME = "django_googler_api:google-callback"
     DJANGO_GOOGLER_ALLOW_GET_ON_DRF_CALLBACK = False

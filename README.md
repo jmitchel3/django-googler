@@ -23,7 +23,28 @@ pip install django-googler
 
 ## Quick Setup
 
-### 1. Add to `settings.py`
+
+### 1. Create a new Google Auth Platform Client
+
+- Go to [Google Cloud Console](https://console.cloud.google.com/)
+- Navigate to **Google Auth Platform**
+- Click **Create Client**
+- Select **Web Application**
+- Enter a name for your client
+- In Javascript Origins, enter the URLs of your frontend(s) (e.g. `http://localhost:3000`, `http://localhost:8000`, `http://localhost:8888`, etc.)
+- Enter the redirect URIs for your client:
+  - `http://localhost:8000/api/auth/google/callback/`
+  - `http://localhost:8000/auth/google/callback/`
+  - `http://127.0.0.1:8000/api/auth/google/callback/`
+  - `http://127.0.0.1:8000/auth/google/callback/`
+- Click **Create**
+- Copy the Client ID and Client Secret and update your `.env` file with:
+```bash
+GOOGLE_OAUTH_CLIENT_ID=your-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+```
+
+### 2. Update Django configuration in `settings.py`
 
 ```python
 INSTALLED_APPS = [
@@ -37,38 +58,62 @@ INSTALLED_APPS = [
 # Get these from Google Cloud Console
 GOOGLE_OAUTH_CLIENT_ID = "your-client-id"
 GOOGLE_OAUTH_CLIENT_SECRET = "your-client-secret"
+
+# change in production to valid redirect URIs
+GOOGLE_OAUTH_REDIRECT_URIS = [
+    "http://localhost:8000/api/googler/callback",
+    "http://localhost:8000/auth/google/callback/",
+]
+
+# Optional: Save OAuth tokens to database
+# Default: True
+GOOGLE_OAUTH_SAVE_TOKENS_TO_DB = True
+# Optional: Request additional Google API scopes
+# Defaults: <below>
+GOOGLE_OAUTH_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+]
 ```
 
-### 2. Add URLs
+### 3. Add URLs
 
 ```python
 # urls.py
 from django.urls import path, include
 
 urlpatterns = [
-    # Django Rest Framework OAuth API views
-    path("api/auth/", include("django_googler.urls.drf")),
-    # Standard Django OAuth views (non django rest framework)
+    # Django Rest Framework OAuth API views (if using DRF)
+    path("api/auth/", include("django_googler.urls.api")),
+    # Standard Django OAuth views with or without DRF)
     path("auth/", include("django_googler.urls.default")),
 ]
 ```
+Both urls are optional, but you should use at least one of them.
 
-### 3. Run Migrations
+These URLs provide the following:
+
+__Django Rest Framework API URLs:__
+- `GET /api/auth/google/login/` - Get Google OAuth URL
+- `POST /api/auth/google/refresh/` - Refresh JWT tokens
+- `POST /api/auth/google/callback/` - Exchange code for JWT tokens
+- `POST /api/auth/google/logout/` - Logout (requires JWT tokens)
+- `GET /api/auth/me/` - Get current user (requires JWT tokens)
+
+
+__Standard Django URLs:__
+- `GET /auth/google/login/` - To automatically start Google OAuth which will automatically redirect you to `/auth/google/callback/` then to your `LOGIN_REDIRECT_URL` (if successful) or back to your `LOGIN_URL` (if unsuccessful)
+- `GET /auth/google/callback/` - To handle Google's callback
+- To `logout` you'll use a standard Django logout view or logout method to end the User's session
+
+
+### 4. Run Migrations
 
 ```bash
 python manage.py migrate
 ```
 
-Done! You now have these endpoints:
-- `GET /api/auth/google/login/` - Get Google OAuth URL
-- `POST /api/auth/google/callback/` - Exchange code for JWT tokens
-- `GET /api/auth/me/` - Get current user (requires JWT)
-- `POST /api/auth/logout/` - Logout (requires JWT)
-
-You can also use the Django views directly:
-- `GET /auth/google/login/` - To automatically start Google OAuth which will automatically redirect you to `/auth/google/callback/`
-- `GET /auth/google/callback/` - To handle Google's callback
-- To `logout` you'll use a standard Django logout view or logout method to end the User's session
 
 ## Usage
 

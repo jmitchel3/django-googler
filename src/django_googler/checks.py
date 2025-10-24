@@ -2,6 +2,7 @@
 Django system checks for django_googler configuration.
 """
 
+from django.conf import settings
 from django.core.checks import Error, Warning, register
 
 
@@ -46,13 +47,11 @@ def check_google_oauth_settings(app_configs, **kwargs):
 
     # Warn if using default redirect URIs
     default_uri = "http://localhost:8000/api/googler/callback"
-    if GOOGLE_OAUTH_REDIRECT_URIS == [default_uri]:
+    if not settings.DEBUG and GOOGLE_OAUTH_REDIRECT_URIS == [default_uri]:
         errors.append(
             Warning(
-                "Using default GOOGLE_OAUTH_REDIRECT_URIS",
-                hint=(
-                    "Set GOOGLE_OAUTH_REDIRECT_URIS to match " "your application URLs"
-                ),
+                "Using default GOOGLE_OAUTH_REDIRECT_URIS in production is not recommended.",
+                hint=("Set GOOGLE_OAUTH_REDIRECT_URIS to match your application URLs"),
                 id="django_googler.W001",
             )
         )
