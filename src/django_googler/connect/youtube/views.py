@@ -1,11 +1,12 @@
 from rest_framework.request import Request
 
+from django_googler.defaults import GOOGLE_OAUTH_SCOPES
 from django_googler.views_api import GoogleOAuthLoginBaseAPIView
 
 
 class YouTubeConnectBaseAPIView(GoogleOAuthLoginBaseAPIView):
     def get_scopes(self, request: Request) -> list[str]:
-        return [
+        return GOOGLE_OAUTH_SCOPES + [
             "https://www.googleapis.com/auth/youtube.readonly",
         ]
 
@@ -21,14 +22,14 @@ class YouTubeConnectBaseAPIView(GoogleOAuthLoginBaseAPIView):
 
 class YouTubeReadOnlyConnectAPIView(YouTubeConnectBaseAPIView):
     def get_scopes(self, request: Request) -> list[str]:
-        return [
+        return GOOGLE_OAUTH_SCOPES + [
             "https://www.googleapis.com/auth/youtube.readonly",
         ]
 
 
 class YouTubeManageConnectAPIView(YouTubeConnectBaseAPIView):
     def get_scopes(self, request: Request) -> list[str]:
-        return [
+        return GOOGLE_OAUTH_SCOPES + [
             "https://www.googleapis.com/auth/youtube",
             "https://www.googleapis.com/auth/youtube.upload",
             "https://www.googleapis.com/auth/youtube.readonly",
@@ -38,13 +39,13 @@ class YouTubeManageConnectAPIView(YouTubeConnectBaseAPIView):
 
 class YouTubePartnerConnectAPIView(YouTubeConnectBaseAPIView):
     def get_scopes(self, request: Request) -> list[str]:
-        return [
+        return GOOGLE_OAUTH_SCOPES + [
             "https://www.googleapis.com/auth/youtubepartner",
         ]
 
 
 class YouTubePartnerChannelAuditConnectAPIView(YouTubeConnectBaseAPIView):
     def get_scopes(self, request: Request) -> list[str]:
-        return [
+        return GOOGLE_OAUTH_SCOPES + [
             "https://www.googleapis.com/auth/youtubepartner-channel-audit",
         ]

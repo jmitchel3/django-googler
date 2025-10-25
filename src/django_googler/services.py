@@ -10,9 +10,18 @@ from typing import Any, Optional
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import FieldDoesNotExist
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _user_model_has_field(field_name):
+    User = get_user_model()
+    try:
+        return User._meta.get_field(field_name) is not None
+    except FieldDoesNotExist:
+        return False
 
 
 def _make_aware(dt):
@@ -461,25 +470,27 @@ class UserService:
         updated = False
 
         # Update first name if missing
-        if not user.first_name:
-            if given_name:
-                user.first_name = given_name
-                updated = True
-            elif name:
-                name_parts = name.split(maxsplit=1)
-                user.first_name = name_parts[0]
-                updated = True
+        if hasattr(user, "first_name"):
+            if not user.first_name:
+                if given_name:
+                    user.first_name = given_name
+                    updated = True
+                elif name:
+                    name_parts = name.split(maxsplit=1)
+                    user.first_name = name_parts[0]
+                    updated = True
 
         # Update last name if missing
-        if not user.last_name:
-            if family_name:
-                user.last_name = family_name
-                updated = True
-            elif name:
-                name_parts = name.split(maxsplit=1)
-                if len(name_parts) > 1:
-                    user.last_name = name_parts[1]
+        if hasattr(user, "last_name"):
+            if not user.last_name:
+                if family_name:
+                    user.last_name = family_name
                     updated = True
+                elif name:
+                    name_parts = name.split(maxsplit=1)
+                    if len(name_parts) > 1:
+                        user.last_name = name_parts[1]
+                        updated = True
 
         return updated
 
@@ -494,6 +505,7 @@ class UserService:
     ):
         """
         Create a new user from OAuth information.
+        Works with any custom user model configuration.
 
         Args:
             email: User's email address
@@ -506,6 +518,7 @@ class UserService:
         Returns:
             Newly created User instance
         """
+
         User = get_user_model()
 
         # Determine first and last names
@@ -520,27 +533,81 @@ class UserService:
             first_name = ""
             last_name = ""
 
-        # Generate unique username from email
-        username = UserService._generate_unique_username(email)
+        # Helper function to check if field exists on model
+
+        # Determine USERNAME_FIELD and build user data
+        username_field = User.USERNAME_FIELD
+        user_data = {}
+
+        # Handle the USERNAME_FIELD (could be 'username', 'email', or custom)
+        if username_field == "email":
+            user_data["email"] = email
+        elif username_field == "username":
+            username = UserService._generate_unique_username(email)
+            user_data["username"] = username
+        else:
+            # Custom USERNAME_FIELD - use email as fallback
+            user_data[username_field] = email
+
+        # Handle REQUIRED_FIELDS
+        for field in getattr(User, "REQUIRED_FIELDS", []):
+            if field == "email" and "email" not in user_data:
+                user_data["email"] = email
+            elif field == "username" and "username" not in user_data:
+                user_data["username"] = UserService._generate_unique_username(email)
+            elif field not in user_data:
+                user_data[field] = ""  # Provide empty default for required fields
+
+        # Add optional standard fields if they exist on the model
+        optional_fields = {
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "google_id": google_id,
+            "picture": picture,
+        }
+
+        # Only include username if it exists and hasn't been set yet
+        if _user_model_has_field("username") and "username" not in user_data:
+            optional_fields["username"] = UserService._generate_unique_username(email)
+
+        for field_name, field_value in optional_fields.items():
+            if (
+                field_value
+                and field_name not in user_data
+                and _user_model_has_field(field_name)
+            ):
+                user_data[field_name] = field_value
 
         # Create the user
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
+        try:
+            user = User.objects.create_user(**user_data)
+            user.set_unusable_password()
+            user.save()
+        except TypeError as e:
+            # Fallback if create_user doesn't accept all kwargs
+            logger.warning(
+                f"create_user failed with kwargs, using direct instantiation: {e}"
+            )
+            user = User(**user_data)
+            user.set_unusable_password()
+            user.save()
+
+        # Log with appropriate identifier
+        identifier = (
+            user_data.get("username")
+            or user_data.get("email")
+            or user_data.get(username_field)
         )
+        logger.info(f"Created new user: {email} (identifier: {identifier})")
 
-        logger.info(f"Created new user: {email} (username: {username})")
-
-        # Note: If you want to store google_id and picture, you should:
-        # 1. Create a custom user model with these fields, or
-        # 2. Create a separate UserProfile model related to User
-        # Example:
-        # if hasattr(user, 'profile'):
-        #     user.profile.google_id = google_id
-        #     user.profile.picture = picture
-        #     user.profile.save()
+        # Store additional OAuth data in profile if it exists
+        if hasattr(user, "profile"):
+            if google_id and _user_model_has_field("google_id"):
+                user.profile.google_id = google_id
+            if picture and _user_model_has_field("picture"):
+                user.profile.picture = picture
+            user.profile.save()
 
         return user
 
