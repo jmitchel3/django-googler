@@ -630,6 +630,11 @@ class UserService:
         # Clean up username (remove special characters if needed)
         username = base_username
 
+        # Check if username field exists on the model
+        if not _user_model_has_field("username"):
+            # If username field doesn't exist, just return the base
+            return username
+
         # Ensure username is unique
         if not User.objects.filter(username=username).exists():
             return username

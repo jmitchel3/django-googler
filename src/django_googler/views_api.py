@@ -233,17 +233,25 @@ class GoogleOAuthCallbackBaseAPIView(
             access_token = str(refresh.access_token)
             refresh_token = str(refresh)
 
-            # Build response
+            # Build response with user data
+            user_data = {
+                "id": user.id,
+            }
+
+            # Add fields that exist on the user model
+            if hasattr(user, "email"):
+                user_data["email"] = user.email
+            if hasattr(user, "username"):
+                user_data["username"] = user.username
+            if hasattr(user, "first_name"):
+                user_data["first_name"] = user.first_name
+            if hasattr(user, "last_name"):
+                user_data["last_name"] = user.last_name
+
             response_data = {
                 "access": access_token,
                 "refresh": refresh_token,
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                },
+                "user": user_data,
             }
 
             # Optionally include Google tokens if configured

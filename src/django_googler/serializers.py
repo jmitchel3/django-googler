@@ -31,17 +31,33 @@ class GoogleOAuthCallbackRequestSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """User information serializer."""
+    """User information serializer that adapts to any custom user model."""
 
     def __init__(self, *args, **kwargs):
         from django.contrib.auth import get_user_model
+        from django.core.exceptions import FieldDoesNotExist
 
-        self.Meta.model = get_user_model()
+        User = get_user_model()
+        self.Meta.model = User
+
+        # Build dynamic field list based on what exists in the user model
+        available_fields = ["id"]  # id is always available
+
+        # Check for standard fields
+        optional_fields = ["email", "username", "first_name", "last_name"]
+        for field_name in optional_fields:
+            try:
+                User._meta.get_field(field_name)
+                available_fields.append(field_name)
+            except FieldDoesNotExist:
+                pass
+
+        self.Meta.fields = available_fields
         super().__init__(*args, **kwargs)
 
     class Meta:
         model = None  # Will be set in __init__
-        fields = ["id", "email", "username", "first_name", "last_name"]
+        fields = []  # Will be set in __init__
 
 
 class GoogleTokensSerializer(serializers.Serializer):
@@ -77,5 +93,5 @@ class GoogleOAuthCallbackResponseSerializer(serializers.Serializer):
     )
     google_tokens = GoogleTokensSerializer(
         required=False,
-        help_text=("Google OAuth tokens " "(only if GOOGLE_OAUTH_RETURN_TOKENS=True)"),
+        help_text=("Google OAuth tokens (only if GOOGLE_OAUTH_RETURN_TOKENS=True)"),
     )
