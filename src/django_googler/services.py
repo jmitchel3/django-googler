@@ -6,17 +6,26 @@ token processing, and user management.
 """
 
 import logging
+import re
+import secrets
+from datetime import timezone as dt_timezone
 from typing import Any, Optional
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import FieldDoesNotExist
+from django.db import transaction
 from django.utils import timezone
+
+from django_googler.defaults import get_django_google_setting
+from django_googler.models import get_user_identifier
 
 logger = logging.getLogger(__name__)
 
+_INVALID_USERNAME_CHARS_RE = re.compile(r"[^\w.@+-]+")
 
-def _user_model_has_field(field_name):
+
+def _user_model_has_field(field_name: str) -> bool:
+    """Return True if the active Django User model defines ``field_name``."""
     User = get_user_model()
     try:
         return User._meta.get_field(field_name) is not None
@@ -24,9 +33,20 @@ def _user_model_has_field(field_name):
         return False
 
 
+def _get_email_field_name(User) -> str:
+    """Return the email field name on ``User`` (respecting custom User models)."""
+    get_email_field = getattr(User, "get_email_field_name", None)
+    if callable(get_email_field):
+        return get_email_field()
+    return "email"
+
+
 def _make_aware(dt):
     """
-    Ensure a datetime is timezone-aware.
+    Ensure a datetime from Google OAuth credentials is timezone-aware UTC.
+
+    Google OAuth libraries return naive UTC datetimes; making them aware in UTC
+    avoids incorrect timezone conversion when ``TIME_ZONE != 'UTC'``.
 
     Args:
         dt: datetime object or None
@@ -38,7 +58,7 @@ def _make_aware(dt):
         return None
     if timezone.is_aware(dt):
         return dt
-    return timezone.make_aware(dt)
+    return timezone.make_aware(dt, dt_timezone.utc)
 
 
 class GoogleOAuthService:
@@ -58,17 +78,9 @@ class GoogleOAuthService:
         Raises:
             Exception: If token verification fails
         """
-        import google.auth.transport.requests
-        from google.oauth2 import id_token
+        id_info = GoogleOAuthService.verify_id_token(credentials)
 
-        # Verify and decode the ID token
-        request_adapter = google.auth.transport.requests.Request()
-        id_info = id_token.verify_oauth2_token(
-            credentials.id_token, request_adapter, credentials.client_id
-        )
-
-        # Build response data
-        response_data = {
+        response_data: dict[str, Any] = {
             "access_token": credentials.token,
             "token_type": "Bearer",
             "expires_in": (
@@ -79,21 +91,20 @@ class GoogleOAuthService:
                 "email": id_info.get("email"),
                 "name": id_info.get("name"),
                 "picture": id_info.get("picture"),
-                "email_verified": id_info.get("email_verified", False),
-                "sub": id_info.get("sub"),  # Google's unique user ID
+                "email_verified": bool(id_info.get("email_verified", False)),
+                "sub": id_info.get("sub"),
                 "given_name": id_info.get("given_name"),
                 "family_name": id_info.get("family_name"),
             },
         }
 
-        # Include refresh token if available
         if credentials.refresh_token:
             response_data["refresh_token"] = credentials.refresh_token
 
         return response_data
 
     @staticmethod
-    def extract_user_info(id_info: dict[str, Any]) -> dict[str, str]:
+    def extract_user_info(id_info: dict[str, Any]) -> dict[str, Any]:
         """
         Extract user information from ID token info.
 
@@ -110,6 +121,7 @@ class GoogleOAuthService:
             "family_name": id_info.get("family_name", ""),
             "picture": id_info.get("picture", ""),
             "google_id": id_info.get("sub", ""),
+            "email_verified": bool(id_info.get("email_verified", False)),
         }
 
     @staticmethod
@@ -140,7 +152,7 @@ class GoogleOAuthService:
             request: Django request object
             credentials: Google OAuth credentials object
         """
-        if getattr(settings, "GOOGLE_OAUTH_STORE_TOKENS", False):
+        if get_django_google_setting("GOOGLE_OAUTH_STORE_TOKENS"):
             request.session["google_access_token"] = credentials.token
             if credentials.refresh_token:
                 request.session["google_refresh_token"] = credentials.refresh_token
@@ -157,6 +169,8 @@ class GoogleOAuthService:
         """
         Save or update Google OAuth tokens for a user in the database.
 
+        Preserves any existing refresh token if Google does not return a new one.
+
         Args:
             user: Django user instance
             credentials: Google OAuth credentials object
@@ -165,42 +179,33 @@ class GoogleOAuthService:
 
         Returns:
             GoogleOAuthToken instance
-
-        Example:
-            token = GoogleOAuthService.save_user_token(
-                user=request.user,
-                credentials=flow.credentials,
-                google_id=id_info.get('sub'),
-                scopes=['email', 'profile']
-            )
         """
         from django_googler.models import GoogleOAuthToken
 
-        # Get or create token record
-        token, created = GoogleOAuthToken.objects.get_or_create(user=user)
+        with transaction.atomic():
+            token, created = GoogleOAuthToken.objects.get_or_create(user=user)
 
-        # Update token fields
-        token.access_token = credentials.token
-        token.token_expiry = _make_aware(credentials.expiry)
+            token.access_token = credentials.token
+            token.token_expiry = _make_aware(credentials.expiry)
 
-        if credentials.refresh_token:
-            token.refresh_token = credentials.refresh_token
+            if credentials.refresh_token:
+                token.refresh_token = credentials.refresh_token
 
-        if credentials.id_token:
-            token.id_token = credentials.id_token
+            if credentials.id_token:
+                token.id_token = credentials.id_token
 
-        if google_id:
-            token.google_id = google_id
+            if google_id:
+                token.google_id = google_id
 
-        if scopes:
-            token.set_scopes_list(scopes)
-        elif hasattr(credentials, "scopes") and credentials.scopes:
-            token.set_scopes_list(list(credentials.scopes))
+            if scopes:
+                token.set_scopes_list(scopes)
+            elif hasattr(credentials, "scopes") and credentials.scopes:
+                token.set_scopes_list(list(credentials.scopes))
 
-        token.save()
+            token.save()
 
         action = "Created" if created else "Updated"
-        logger.info(f"{action} OAuth token for user: {user.email}")
+        logger.info("%s OAuth token for user: %s", action, get_user_identifier(user))
 
         return token
 
@@ -214,12 +219,6 @@ class GoogleOAuthService:
 
         Returns:
             GoogleOAuthToken instance or None
-
-        Example:
-            token = GoogleOAuthService.get_user_token(request.user)
-            if token and token.is_valid:
-                # Use token.access_token for API calls
-                pass
         """
         from django_googler.models import GoogleOAuthToken
 
@@ -233,6 +232,9 @@ class GoogleOAuthService:
         """
         Refresh an expired access token using the refresh token.
 
+        Persists any rotated refresh token or updated ID token returned by
+        Google and emits the ``google_oauth_token_refreshed`` signal.
+
         Args:
             token_or_user: Either a GoogleOAuthToken instance or User instance
 
@@ -240,79 +242,82 @@ class GoogleOAuthService:
             Updated GoogleOAuthToken instance
 
         Raises:
-            ValueError: If no refresh token is available
+            ValueError: If no token or refresh token is available
             Exception: If token refresh fails
-
-        Example:
-            try:
-                token = GoogleOAuthService.get_user_token(request.user)
-                if token and token.is_expired():
-                    token = GoogleOAuthService.refresh_user_token(token)
-            except ValueError:
-                # No refresh token available, user needs to re-authenticate
-                pass
         """
         import google.auth.transport.requests
-        from google.oauth2.credentials import Credentials
 
         from django_googler.models import GoogleOAuthToken
+        from django_googler.signals import google_oauth_token_refreshed
 
-        # Handle both token and user inputs
         if isinstance(token_or_user, GoogleOAuthToken):
-            token = token_or_user
+            token_pk = token_or_user.pk
         else:
-            token = GoogleOAuthService.get_user_token(token_or_user)
-            if not token:
+            existing = GoogleOAuthService.get_user_token(token_or_user)
+            if not existing:
                 raise ValueError("No token found for user")
+            token_pk = existing.pk
 
-        if not token.refresh_token:
-            raise ValueError("No refresh token available. User must re-authenticate.")
-
-        try:
-            # Create credentials object from stored token
-            credentials = Credentials(
-                token=token.access_token,
-                refresh_token=token.refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", None),
-                client_secret=getattr(settings, "GOOGLE_OAUTH_CLIENT_SECRET", None),
-                scopes=token.get_scopes_list(),
+        with transaction.atomic():
+            token = (
+                GoogleOAuthToken.objects.select_for_update()
+                .select_related("user")
+                .get(pk=token_pk)
             )
 
-            # Refresh the token
-            request = google.auth.transport.requests.Request()
-            credentials.refresh(request)
+            if not token.refresh_token:
+                raise ValueError(
+                    "No refresh token available. User must re-authenticate."
+                )
 
-            # Update stored token
-            token.access_token = credentials.token
-            token.token_expiry = _make_aware(credentials.expiry)
-            token.save()
+            try:
+                credentials = token.to_credentials()
+                request = google.auth.transport.requests.Request()
+                credentials.refresh(request)
 
-            logger.info(f"Refreshed OAuth token for user: {token.user.email}")
+                token.access_token = credentials.token
+                token.token_expiry = _make_aware(credentials.expiry)
+                if credentials.refresh_token:
+                    token.refresh_token = credentials.refresh_token
+                if credentials.id_token:
+                    token.id_token = credentials.id_token
+                token.save()
 
-            return token
+            except Exception as e:
+                logger.error(
+                    "Failed to refresh token for %s: %s",
+                    get_user_identifier(token.user),
+                    e,
+                    exc_info=True,
+                )
+                raise
 
-        except Exception as e:
-            logger.error(
-                f"Failed to refresh token for {token.user.email}: {str(e)}",
-                exc_info=True,
-            )
-            raise
+        logger.info(
+            "Refreshed OAuth token for user: %s", get_user_identifier(token.user)
+        )
+
+        google_oauth_token_refreshed.send(
+            sender=GoogleOAuthService,
+            user=token.user,
+            token=token,
+        )
+
+        return token
 
     @staticmethod
-    def revoke_user_token(user):
+    def revoke_user_token(user) -> bool:
         """
         Revoke a user's Google OAuth token and delete it from database.
+
+        Sends the token in the POST body (never URL query parameters) with an
+        explicit timeout. Prefers revoking the refresh token (which invalidates
+        the entire grant) and falls back to the access token.
 
         Args:
             user: Django user instance
 
         Returns:
-            True if token was revoked, False if no token existed
-
-        Example:
-            # On logout, revoke the user's token
-            GoogleOAuthService.revoke_user_token(request.user)
+            True if a token existed and was deleted, False if no token existed
         """
         import requests
 
@@ -320,76 +325,115 @@ class GoogleOAuthService:
         if not token:
             return False
 
-        # Try to revoke the token with Google
-        if token.access_token:
+        user_id = get_user_identifier(user)
+        token_to_revoke = token.refresh_token or token.access_token
+
+        if token_to_revoke:
             try:
-                revoke_url = "https://oauth2.googleapis.com/revoke"
+                revoke_url = get_django_google_setting("GOOGLE_OAUTH_REVOKE_URI")
+                timeout = get_django_google_setting("GOOGLE_OAUTH_REQUEST_TIMEOUT")
                 response = requests.post(
                     revoke_url,
-                    params={"token": token.access_token},
+                    data={"token": token_to_revoke},
                     headers={"content-type": "application/x-www-form-urlencoded"},
+                    timeout=timeout,
                 )
 
                 if response.status_code == 200:
-                    logger.info(f"Revoked Google token for user: {user.email}")
+                    logger.info("Revoked Google token for user: %s", user_id)
                 else:
                     logger.warning(
-                        f"Failed to revoke Google token for {user.email}: "
-                        f"{response.status_code}"
+                        "Failed to revoke Google token for %s: %s",
+                        user_id,
+                        response.status_code,
                     )
             except Exception as e:
-                logger.warning(
-                    f"Error revoking Google token for {user.email}: {str(e)}"
-                )
+                logger.warning("Error revoking Google token for %s: %s", user_id, e)
 
-        # Delete from database regardless of revocation success
         token.delete()
-        logger.info(f"Deleted OAuth token for user: {user.email}")
+        logger.info("Deleted OAuth token for user: %s", user_id)
 
         return True
 
     @staticmethod
-    def get_valid_token(user):
+    def get_valid_token(user, leeway: Optional[int] = None):
         """
         Get a valid (non-expired) access token for a user.
 
-        This method will automatically refresh the token if it's expired
-        and a refresh token is available.
+        Automatically refreshes the token if it is expired (or within
+        ``leeway`` seconds of expiring) and a refresh token is available.
 
         Args:
             user: Django user instance
+            leeway: Optional expiry buffer in seconds (defaults to
+                ``GOOGLE_OAUTH_TOKEN_REFRESH_LEEWAY``)
 
         Returns:
-            Tuple of (access_token: str, token_expiry: datetime) or (None, None)
-
-        Example:
-            access_token, expiry = GoogleOAuthService.get_valid_token(request.user)
-            if access_token:
-                # Use access_token for API calls
-                headers = {'Authorization': f'Bearer {access_token}'}
-                response = requests.get(
-                    'https://www.googleapis.com/calendar/v3/calendars/primary/events',
-                    headers=headers
-                )
+            Tuple of ``(access_token: str, token_expiry: datetime)`` or
+            ``(None, None)``
         """
         token = GoogleOAuthService.get_user_token(user)
-
         if not token:
             return None, None
 
-        # If token is expired and can be refreshed, refresh it
-        if token.is_expired() and token.can_refresh:
+        if leeway is None:
+            leeway = int(get_django_google_setting("GOOGLE_OAUTH_TOKEN_REFRESH_LEEWAY"))
+
+        if token.is_expired(leeway=leeway) and token.can_refresh:
             try:
                 token = GoogleOAuthService.refresh_user_token(token)
             except Exception as e:
-                logger.error(f"Failed to refresh token: {str(e)}")
+                logger.error("Failed to refresh token: %s", e)
                 return None, None
 
-        # Return token if valid
         if token.is_valid:
             return token.access_token, token.token_expiry
 
         return None, None
+
+    @staticmethod
+    def get_credentials(
+        user,
+        *,
+        auto_refresh: bool = True,
+        leeway: Optional[int] = None,
+    ):
+        """
+        Get a ``google.oauth2.credentials.Credentials`` object for a user.
+
+        Ideal for passing directly into ``google-api-python-client``::
+
+            creds = GoogleOAuthService.get_credentials(request.user)
+            if creds:
+                service = build("calendar", "v3", credentials=creds)
+
+        Args:
+            user: Django user instance
+            auto_refresh: Whether to automatically refresh expired tokens
+            leeway: Optional expiry buffer in seconds (defaults to
+                ``GOOGLE_OAUTH_TOKEN_REFRESH_LEEWAY``)
+
+        Returns:
+            ``Credentials`` instance, or ``None`` if no valid token exists.
+        """
+        token = GoogleOAuthService.get_user_token(user)
+        if not token:
+            return None
+
+        if leeway is None:
+            leeway = int(get_django_google_setting("GOOGLE_OAUTH_TOKEN_REFRESH_LEEWAY"))
+
+        if auto_refresh and token.is_expired(leeway=leeway) and token.can_refresh:
+            try:
+                token = GoogleOAuthService.refresh_user_token(token)
+            except Exception as e:
+                logger.error("Failed to refresh credentials: %s", e)
+                return None
+
+        if not token.is_valid:
+            return None
+
+        return token.to_credentials()
 
 
 class UserService:
@@ -403,9 +447,15 @@ class UserService:
         picture: Optional[str] = None,
         given_name: Optional[str] = None,
         family_name: Optional[str] = None,
+        email_verified: Optional[bool] = None,
     ):
         """
         Get or create a user from Google OAuth information.
+
+        Looks up existing users first by ``google_id`` (via ``GoogleOAuthToken``)
+        and then by case-insensitive email. When ``email_verified`` is explicitly
+        ``False`` and ``GOOGLE_OAUTH_REQUIRE_VERIFIED_EMAIL`` is enabled, raises
+        ``ValueError`` to prevent unverified-email account takeover.
 
         Args:
             email: User's email address (required)
@@ -414,39 +464,69 @@ class UserService:
             picture: URL to user's profile picture
             given_name: User's first name from Google
             family_name: User's last name from Google
+            email_verified: Whether Google verified the email address
 
         Returns:
-            User instance
+            Tuple of ``(user, created)``
 
         Raises:
-            ValueError: If email is not provided
+            ValueError: If email is missing or email is unverified when required
         """
+        from django_googler.models import GoogleOAuthToken
+
         User = get_user_model()
 
         if not email:
             raise ValueError("Email is required to get or create user")
 
-        # Try to find user by email
-        try:
-            user = User.objects.get(email=email)
-            logger.info(f"Found existing user: {email}")
+        require_verified = get_django_google_setting(
+            "GOOGLE_OAUTH_REQUIRE_VERIFIED_EMAIL"
+        )
+        if require_verified and email_verified is False:
+            raise ValueError("Google account email is not verified")
 
-            # Update user info if needed
+        user = None
+
+        # 1. Prefer matching by stable Google `sub` identifier if we have a token
+        if google_id:
+            existing_token = (
+                GoogleOAuthToken.objects.select_related("user")
+                .filter(google_id=google_id)
+                .first()
+            )
+            if existing_token is not None:
+                user = existing_token.user
+
+        # 2. Fall back to case-insensitive email match
+        if user is None:
+            email_field = _get_email_field_name(User)
+            if _user_model_has_field(email_field):
+                matching_users = list(
+                    User.objects.filter(**{f"{email_field}__iexact": email}).order_by(
+                        "pk"
+                    )[:2]
+                )
+                if len(matching_users) > 1:
+                    logger.warning(
+                        "Multiple users found with email %s; selecting earliest user",
+                        email,
+                    )
+                if matching_users:
+                    user = matching_users[0]
+
+        if user is not None:
+            logger.info("Found existing user: %s", get_user_identifier(user))
             updated = UserService._update_user_info(user, name, given_name, family_name)
-
             if updated:
                 user.save()
-                logger.info(f"Updated user info for: {email}")
-
+                logger.info("Updated user info for: %s", get_user_identifier(user))
             return user, False
 
-        except User.DoesNotExist:
-            # Create new user
-            logger.info(f"Creating new user: {email}")
-            user = UserService._create_new_user(
-                email, name, given_name, family_name, google_id, picture
-            )
-            return user, True
+        logger.info("Creating new user: %s", email)
+        user = UserService._create_new_user(
+            email, name, given_name, family_name, google_id, picture
+        )
+        return user, True
 
     @staticmethod
     def _update_user_info(
@@ -456,7 +536,7 @@ class UserService:
         family_name: Optional[str] = None,
     ) -> bool:
         """
-        Update user information if fields are missing.
+        Update user information if name fields are missing.
 
         Args:
             user: User instance to update
@@ -469,28 +549,24 @@ class UserService:
         """
         updated = False
 
-        # Update first name if missing
-        if hasattr(user, "first_name"):
-            if not user.first_name:
-                if given_name:
-                    user.first_name = given_name
-                    updated = True
-                elif name:
-                    name_parts = name.split(maxsplit=1)
-                    user.first_name = name_parts[0]
-                    updated = True
+        if hasattr(user, "first_name") and not user.first_name:
+            if given_name:
+                user.first_name = given_name
+                updated = True
+            elif name:
+                name_parts = name.split(maxsplit=1)
+                user.first_name = name_parts[0]
+                updated = True
 
-        # Update last name if missing
-        if hasattr(user, "last_name"):
-            if not user.last_name:
-                if family_name:
-                    user.last_name = family_name
+        if hasattr(user, "last_name") and not user.last_name:
+            if family_name:
+                user.last_name = family_name
+                updated = True
+            elif name:
+                name_parts = name.split(maxsplit=1)
+                if len(name_parts) > 1:
+                    user.last_name = name_parts[1]
                     updated = True
-                elif name:
-                    name_parts = name.split(maxsplit=1)
-                    if len(name_parts) > 1:
-                        user.last_name = name_parts[1]
-                        updated = True
 
         return updated
 
@@ -506,68 +582,41 @@ class UserService:
         """
         Create a new user from OAuth information.
         Works with any custom user model configuration.
-
-        Args:
-            email: User's email address
-            name: Full name (used if given_name/family_name not provided)
-            given_name: First name
-            family_name: Last name
-            google_id: Google's unique user ID
-            picture: URL to user's profile picture
-
-        Returns:
-            Newly created User instance
         """
-
         User = get_user_model()
 
-        # Determine first and last names
-        if given_name and family_name:
-            first_name = given_name
-            last_name = family_name
-        elif name:
-            name_parts = name.split(maxsplit=1)
-            first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
-        else:
-            first_name = ""
-            last_name = ""
+        # Determine first and last names cleanly even when only one is given
+        name_parts = name.split(maxsplit=1) if name else []
+        first_name = given_name or (name_parts[0] if name_parts else "")
+        last_name = family_name or (name_parts[1] if len(name_parts) > 1 else "")
 
-        # Helper function to check if field exists on model
-
-        # Determine USERNAME_FIELD and build user data
         username_field = User.USERNAME_FIELD
-        user_data = {}
+        email_field = _get_email_field_name(User)
+        user_data: dict[str, Any] = {}
 
-        # Handle the USERNAME_FIELD (could be 'username', 'email', or custom)
-        if username_field == "email":
-            user_data["email"] = email
+        if username_field == email_field:
+            user_data[email_field] = email
         elif username_field == "username":
-            username = UserService._generate_unique_username(email)
-            user_data["username"] = username
+            user_data["username"] = UserService._generate_unique_username(email)
         else:
-            # Custom USERNAME_FIELD - use email as fallback
             user_data[username_field] = email
 
-        # Handle REQUIRED_FIELDS
         for field in getattr(User, "REQUIRED_FIELDS", []):
-            if field == "email" and "email" not in user_data:
-                user_data["email"] = email
+            if field == email_field and email_field not in user_data:
+                user_data[email_field] = email
             elif field == "username" and "username" not in user_data:
                 user_data["username"] = UserService._generate_unique_username(email)
             elif field not in user_data:
-                user_data[field] = ""  # Provide empty default for required fields
+                user_data[field] = ""
 
-        # Add optional standard fields if they exist on the model
-        optional_fields = {
-            "email": email,
+        optional_fields: dict[str, Any] = {
+            email_field: email,
             "first_name": first_name,
             "last_name": last_name,
             "google_id": google_id,
             "picture": picture,
         }
 
-        # Only include username if it exists and hasn't been set yet
         if _user_model_has_field("username") and "username" not in user_data:
             optional_fields["username"] = UserService._generate_unique_username(email)
 
@@ -579,135 +628,126 @@ class UserService:
             ):
                 user_data[field_name] = field_value
 
-        # Create the user
         try:
             user = User.objects.create_user(**user_data)
             user.set_unusable_password()
-            user.save()
+            user.save(update_fields=["password"])
         except TypeError as e:
-            # Fallback if create_user doesn't accept all kwargs
             logger.warning(
-                f"create_user failed with kwargs, using direct instantiation: {e}"
+                "create_user failed with kwargs, using direct instantiation: %s", e
             )
             user = User(**user_data)
             user.set_unusable_password()
             user.save()
 
-        # Log with appropriate identifier
         identifier = (
             user_data.get("username")
-            or user_data.get("email")
+            or user_data.get(email_field)
             or user_data.get(username_field)
         )
-        logger.info(f"Created new user: {email} (identifier: {identifier})")
+        logger.info("Created new user: %s (identifier: %s)", email, identifier)
 
-        # Store additional OAuth data in profile if it exists
+        # Store additional OAuth data on related profile if it exists and defines fields
         if hasattr(user, "profile"):
-            if google_id and _user_model_has_field("google_id"):
-                user.profile.google_id = google_id
-            if picture and _user_model_has_field("picture"):
-                user.profile.picture = picture
-            user.profile.save()
+            profile = user.profile
+            profile_updated = False
+            if google_id and hasattr(profile, "google_id"):
+                profile.google_id = google_id
+                profile_updated = True
+            if picture and hasattr(profile, "picture"):
+                profile.picture = picture
+                profile_updated = True
+            if profile_updated:
+                profile.save()
 
         return user
 
     @staticmethod
     def _generate_unique_username(email: str) -> str:
         """
-        Generate a unique username from an email address.
+        Generate a sanitized, unique username from an email address.
 
-        Args:
-            email: User's email address
-
-        Returns:
-            Unique username string
+        Strips characters disallowed by Django's username validator and respects
+        the model's ``username.max_length``.
         """
         User = get_user_model()
 
-        # Extract base username from email
-        base_username = email.split("@")[0]
+        raw_base = email.split("@")[0]
+        base_username = _INVALID_USERNAME_CHARS_RE.sub("", raw_base) or "user"
 
-        # Clean up username (remove special characters if needed)
-        username = base_username
-
-        # Check if username field exists on the model
         if not _user_model_has_field("username"):
-            # If username field doesn't exist, just return the base
-            return username
+            return base_username
 
-        # Ensure username is unique
-        if not User.objects.filter(username=username).exists():
-            return username
+        username_field = User._meta.get_field("username")
+        max_length = getattr(username_field, "max_length", 150) or 150
+        base_username = base_username[:max_length]
 
-        # Add numeric suffix if username exists
+        if not User.objects.filter(username=base_username).exists():
+            return base_username
+
         counter = 1
-        while User.objects.filter(username=f"{base_username}{counter}").exists():
+        while True:
+            suffix = str(counter)
+            candidate = f"{base_username[: max_length - len(suffix)]}{suffix}"
+            if not User.objects.filter(username=candidate).exists():
+                return candidate
             counter += 1
-
-        return f"{base_username}{counter}"
 
 
 class OAuthFlowService:
-    """Service class for managing OAuth flow state and validation."""
+    """Service class for managing session-based OAuth flow state and validation."""
 
     @staticmethod
     def store_state(request, state: str) -> None:
-        """
-        Store OAuth state in session for CSRF protection.
-
-        Args:
-            request: Django request object
-            state: OAuth state string
-        """
+        """Store OAuth state in session for CSRF protection."""
         request.session["oauth_state"] = state
 
     @staticmethod
     def verify_state(request, state: Optional[str]) -> bool:
-        """
-        Verify OAuth state for CSRF protection.
-
-        Args:
-            request: Django request object
-            state: State parameter from OAuth callback
-
-        Returns:
-            True if state is valid, False otherwise
-        """
+        """Verify OAuth state in constant time for CSRF protection."""
         session_state = request.session.get("oauth_state")
-        return bool(state and session_state and state == session_state)
+        if not state or not session_state:
+            return False
+        return secrets.compare_digest(str(state), str(session_state))
+
+    @staticmethod
+    def store_scopes(request, scopes: Optional[list[str]]) -> None:
+        """Store requested OAuth scopes in session for callback verification."""
+        if scopes is not None:
+            request.session["oauth_scopes"] = list(scopes)
+        else:
+            request.session.pop("oauth_scopes", None)
+
+    @staticmethod
+    def get_scopes(request) -> Optional[list[str]]:
+        """Retrieve requested OAuth scopes stored in session."""
+        return request.session.get("oauth_scopes")
+
+    @staticmethod
+    def store_code_verifier(request, code_verifier: Optional[str]) -> None:
+        """Store PKCE code verifier in session."""
+        if code_verifier:
+            request.session["oauth_code_verifier"] = code_verifier
+        else:
+            request.session.pop("oauth_code_verifier", None)
+
+    @staticmethod
+    def get_code_verifier(request) -> Optional[str]:
+        """Retrieve PKCE code verifier from session."""
+        return request.session.get("oauth_code_verifier")
 
     @staticmethod
     def clear_state(request) -> None:
-        """
-        Clear OAuth state from session.
-
-        Args:
-            request: Django request object
-        """
-        if "oauth_state" in request.session:
-            del request.session["oauth_state"]
+        """Clear OAuth state, scopes, and PKCE verifier from session."""
+        for key in ("oauth_state", "oauth_scopes", "oauth_code_verifier"):
+            request.session.pop(key, None)
 
     @staticmethod
     def store_next_url(request, next_url: str) -> None:
-        """
-        Store the next URL for redirect after OAuth.
-
-        Args:
-            request: Django request object
-            next_url: URL to redirect to after successful OAuth
-        """
+        """Store the next URL for redirect after OAuth."""
         request.session["oauth_next"] = next_url
 
     @staticmethod
     def get_next_url(request, default: str = "/") -> str:
-        """
-        Get and clear the next URL from session.
-
-        Args:
-            request: Django request object
-            default: Default URL if none stored
-
-        Returns:
-            Next URL string
-        """
+        """Get and clear the next URL from session."""
         return request.session.pop("oauth_next", default)

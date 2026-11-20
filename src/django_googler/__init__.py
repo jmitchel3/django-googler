@@ -6,54 +6,48 @@ except PackageNotFoundError:
     # Package is not installed
     __version__ = "unknown"
 
+_LAZY_IMPORTS = {
+    "app_settings": ("django_googler.defaults", "app_settings"),
+    "GoogleOAuthService": ("django_googler.services", "GoogleOAuthService"),
+    "OAuthFlowService": ("django_googler.services", "OAuthFlowService"),
+    "UserService": ("django_googler.services", "UserService"),
+    "GoogleOAuthLoginView": ("django_googler.views_default", "GoogleOAuthLoginView"),
+    "GoogleOAuthCallbackView": (
+        "django_googler.views_default",
+        "GoogleOAuthCallbackView",
+    ),
+    "GoogleOAuthLoginAPIView": ("django_googler.views_api", "GoogleOAuthLoginAPIView"),
+    "GoogleOAuthCallbackAPIView": (
+        "django_googler.views_api",
+        "GoogleOAuthCallbackAPIView",
+    ),
+    "CurrentUserAPIView": ("django_googler.views_api", "CurrentUserAPIView"),
+    "GoogleOAuthLogoutAPIView": (
+        "django_googler.views_api",
+        "GoogleOAuthLogoutAPIView",
+    ),
+    "google_oauth_success": ("django_googler.signals", "google_oauth_success"),
+    "google_oauth_failed": ("django_googler.signals", "google_oauth_failed"),
+    "google_oauth_token_refreshed": (
+        "django_googler.signals",
+        "google_oauth_token_refreshed",
+    ),
+    "google_oauth_logout": ("django_googler.signals", "google_oauth_logout"),
+}
 
-def __getattr__(name):
+
+def __getattr__(name: str):
     """Lazy import to avoid loading Django models before apps are ready."""
-    if name == "GoogleOAuthService":
-        from django_googler.services import GoogleOAuthService
-
-        return GoogleOAuthService
-    elif name == "OAuthFlowService":
-        from django_googler.services import OAuthFlowService
-
-        return OAuthFlowService
-    elif name == "UserService":
-        from django_googler.services import UserService
-
-        return UserService
-    elif name == "GoogleOAuthLoginView":
-        from django_googler.views_default import GoogleOAuthLoginView
-
-        return GoogleOAuthLoginView
-    elif name == "GoogleOAuthCallbackView":
-        from django_googler.views_default import GoogleOAuthCallbackView
-
-        return GoogleOAuthCallbackView
-    elif name == "GoogleOAuthLoginAPIView":
-        from django_googler.views_api import GoogleOAuthLoginAPIView
-
-        return GoogleOAuthLoginAPIView
-    elif name == "GoogleOAuthCallbackAPIView":
-        from django_googler.views_api import GoogleOAuthCallbackAPIView
-
-        return GoogleOAuthCallbackAPIView
-    elif name == "CurrentUserAPIView":
-        from django_googler.views_api import CurrentUserAPIView
-
-        return CurrentUserAPIView
-    elif name == "GoogleOAuthLogoutAPIView":
-        from django_googler.views_api import GoogleOAuthLogoutAPIView
-
-        return GoogleOAuthLogoutAPIView
-    elif name == "google_oauth_success":
-        from django_googler.signals import google_oauth_success
-
-        return google_oauth_success
+    if name in _LAZY_IMPORTS:
+        module_name, attr_name = _LAZY_IMPORTS[name]
+        module = __import__(module_name, fromlist=[attr_name])
+        return getattr(module, attr_name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
     "__version__",
+    "app_settings",
     # Services
     "GoogleOAuthService",
     "OAuthFlowService",
@@ -68,4 +62,7 @@ __all__ = [
     "GoogleOAuthLogoutAPIView",
     # Signals
     "google_oauth_success",
+    "google_oauth_failed",
+    "google_oauth_token_refreshed",
+    "google_oauth_logout",
 ]

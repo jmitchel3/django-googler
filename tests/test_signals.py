@@ -9,7 +9,6 @@ from django.contrib.auth import get_user_model
 
 from django_googler.signals import google_oauth_success
 
-
 User = get_user_model()
 
 

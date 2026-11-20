@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "django-googler"
-version = "0.0.20"
+version = "0.1.0"
 description = "Django Googler is a simple way to integrate Google Auth Platform with your Django project."
 readme = "README.md"
 keywords = [ "auth", "django", "djangorestframework", "google", "oauth", "oauth2", "oauthlib" ]
@@ -19,6 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
 ]
 dependencies = [
   "django>=5.2",
@@ -26,11 +27,12 @@ dependencies = [
   "djangorestframework-simplejwt>=5.4",
   "google-auth>=2.41",
   "google-auth-oauthlib>=1.2",
+  "requests>=2.31",
 ]
 
-urls.Changelog = "https://github.com/jmitchel3/django-googler"
-urls.Documentation = "https://github.com/jmitchel3/django-googler"
-urls.Funding = "https://github.com/jmitchel3/django-googler"
+urls.Changelog = "https://github.com/jmitchel3/django-googler/blob/main/CHANGELOG.md"
+urls.Documentation = "https://github.com/jmitchel3/django-googler#readme"
+urls.Issues = "https://github.com/jmitchel3/django-googler/issues"
 urls.Repository = "https://github.com/jmitchel3/django-googler"
 
 [dependency-groups]
@@ -46,13 +48,12 @@ test = [
   "pytest-django>=4.9",
 ]
 
-[tool.black]
-line-length = 88
-target-version = [ 'py312' ]
+[tool.ruff]
+target-version = "py312"
 
-[tool.isort]
-profile = "black"
-line_length = 88
+line-length = 88
+lint.select = [ "E", "F", "I", "W" ]
+lint.ignore = [ "E501" ]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
@@ -69,6 +70,10 @@ omit = [ "*/tests/*" ]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "pragma: no cover",
+]
 
 [tool.tox]
 legacy_tox_ini = """

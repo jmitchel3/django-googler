@@ -3,25 +3,31 @@ URL configurations for django_googler.
 
 This module provides pre-configured URL patterns for easy integration.
 
-Usage:
-    # For regular Django views
+Usage::
+
+    # For regular Django session views:
+    #   GET /auth/google/login/
+    #   GET /auth/google/callback/
     from django.urls import include, path
 
     urlpatterns = [
-        path('auth/google/', include('django_googler.urls.default')),
+        path("auth/", include("django_googler.urls.default")),
     ]
 
-    # For Django Rest Framework API views
-    from django.urls import include, path
-
+    # For Django REST Framework API views:
+    #   GET  /api/auth/google/login/
+    #   POST /api/auth/google/callback/
+    #   POST /api/auth/google/refresh/
+    #   POST /api/auth/google/logout/
+    #   GET  /api/auth/me/
     urlpatterns = [
-        path('api/auth/google/', include('django_googler.urls.api')),
+        path("api/auth/", include("django_googler.urls.api")),
     ]
 
-    # Or use both
+    # Or use both:
     urlpatterns = [
-        path('auth/google/', include('django_googler.urls.default')),
-        path('api/auth/google/', include('django_googler.urls.api')),
+        path("auth/", include("django_googler.urls.default")),
+        path("api/auth/", include("django_googler.urls.api")),
     ]
 """
 

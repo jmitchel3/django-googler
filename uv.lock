@@ -203,7 +203,7 @@ wheels = [
 
 [[package]]
 name = "django-googler"
-version = "0.0.20"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "django" },
@@ -211,6 +211,7 @@ dependencies = [
     { name = "djangorestframework-simplejwt" },
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
+    { name = "requests" },
 ]
 
 [package.dev-dependencies]
@@ -233,6 +234,7 @@ requires-dist = [
     { name = "djangorestframework-simplejwt", specifier = ">=5.4" },
     { name = "google-auth", specifier = ">=2.41" },
     { name = "google-auth-oauthlib", specifier = ">=1.2" },
+    { name = "requests", specifier = ">=2.31" },
 ]
 
 [package.metadata.requires-dev]

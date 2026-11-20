@@ -5,10 +5,11 @@ This module provides admin interface configuration for managing
 Google OAuth tokens in the Django admin.
 """
 
-from django.contrib import admin
-from django.utils.html import format_html
+from django.contrib import admin, messages
+from django.utils.html import format_html, format_html_join
 
-from django_googler.models import GoogleOAuthToken
+from django_googler.models import GoogleOAuthToken, get_user_identifier
+from django_googler.services import GoogleOAuthService, _user_model_has_field
 
 
 @admin.register(GoogleOAuthToken)
@@ -25,16 +26,12 @@ class GoogleOAuthTokenAdmin(admin.ModelAdmin):
         "updated_at",
     ]
 
+    list_select_related = ("user",)
+
     list_filter = [
         "created_at",
         "updated_at",
         "token_expiry",
-    ]
-
-    search_fields = [
-        "user__email",
-        "user__username",
-        "google_id",
     ]
 
     readonly_fields = [
@@ -47,6 +44,8 @@ class GoogleOAuthTokenAdmin(admin.ModelAdmin):
         "access_token_preview",
         "refresh_token_preview",
     ]
+
+    actions = ["refresh_selected_tokens", "revoke_selected_tokens"]
 
     fieldsets = (
         (
@@ -88,39 +87,86 @@ class GoogleOAuthTokenAdmin(admin.ModelAdmin):
         ),
     )
 
+    def get_search_fields(self, request):
+        """Build search_fields dynamically so custom user models never error."""
+        fields = ["google_id"]
+        if _user_model_has_field("email"):
+            fields.insert(0, "user__email")
+        if _user_model_has_field("username"):
+            fields.insert(1 if "user__email" in fields else 0, "user__username")
+        return fields
+
+    @admin.action(description="Refresh selected Google OAuth tokens")
+    def refresh_selected_tokens(self, request, queryset):
+        """Refresh selected OAuth tokens that have refresh tokens."""
+        refreshed = 0
+        failed = 0
+        for token in queryset.select_related("user"):
+            try:
+                GoogleOAuthService.refresh_user_token(token)
+                refreshed += 1
+            except Exception:
+                failed += 1
+        if refreshed:
+            self.message_user(
+                request,
+                f"Refreshed {refreshed} token(s).",
+                level=messages.SUCCESS,
+            )
+        if failed:
+            self.message_user(
+                request,
+                f"Failed to refresh {failed} token(s).",
+                level=messages.WARNING,
+            )
+
+    @admin.action(description="Revoke and delete selected Google OAuth tokens")
+    def revoke_selected_tokens(self, request, queryset):
+        """Revoke selected OAuth tokens with Google and delete them."""
+        revoked = 0
+        for token in queryset.select_related("user"):
+            if GoogleOAuthService.revoke_user_token(token.user):
+                revoked += 1
+        self.message_user(
+            request,
+            f"Revoked and deleted {revoked} token(s).",
+            level=messages.SUCCESS,
+        )
+
     @admin.display(
-        description="User Email",
-        ordering="user__email",
+        description="User",
+        ordering="user",
     )
     def user_email(self, obj):
-        """Display user's email."""
-        return obj.user.email
+        """Display user's email or fallback identifier."""
+        return get_user_identifier(obj.user)
 
     @admin.display(description="Status")
     def token_status(self, obj):
         """Display token status as text."""
         if obj.is_valid:
             return "Valid"
-        elif obj.is_expired():
+        if obj.is_expired():
             return "Expired"
-        else:
-            return "Invalid"
+        return "Invalid"
 
     @admin.display(description="Token Status")
     def token_status_badge(self, obj):
         """Display token status with color coding."""
         if obj.is_valid:
             color = "green"
-            status = "✓ Valid"
+            status_label = "✓ Valid"
         elif obj.is_expired():
             color = "orange"
-            status = "⏱ Expired"
+            status_label = "⏱ Expired"
         else:
             color = "red"
-            status = "✗ Invalid"
+            status_label = "✗ Invalid"
 
         return format_html(
-            '<span style="color: {}; font-weight: bold;">{}</span>', color, status
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            status_label,
         )
 
     @admin.display(
@@ -134,8 +180,7 @@ class GoogleOAuthTokenAdmin(admin.ModelAdmin):
     @admin.display(description="Scopes")
     def scope_count(self, obj):
         """Display number of scopes."""
-        scopes = obj.get_scopes_list()
-        return len(scopes)
+        return len(obj.get_scopes_list())
 
     @admin.display(
         description="Expires",
@@ -149,30 +194,25 @@ class GoogleOAuthTokenAdmin(admin.ModelAdmin):
 
     @admin.display(description="Granted Scopes")
     def scopes_display(self, obj):
-        """Display scopes as a formatted list."""
+        """Display scopes safely as an escaped HTML list."""
         scopes = obj.get_scopes_list()
         if not scopes:
             return "None"
 
-        html = "<ul style='margin: 0; padding-left: 20px;'>"
-        for scope in scopes:
-            html += f"<li>{scope}</li>"
-        html += "</ul>"
-
-        return format_html(html)
+        items = format_html_join("", "<li>{}</li>", ((scope,) for scope in scopes))
+        return format_html(
+            '<ul style="margin: 0; padding-left: 20px;">{}</ul>',
+            items,
+        )
 
     @admin.display(description="Access Token")
     def access_token_preview(self, obj):
-        """Display a preview of the access token."""
+        """Display a truncated preview of the access token."""
         if not obj.access_token:
             return "None"
 
-        # Show first 20 and last 10 characters
         token = obj.access_token
-        if len(token) > 35:
-            preview = f"{token[:20]}...{token[-10:]}"
-        else:
-            preview = token
+        preview = f"{token[:20]}...{token[-10:]}" if len(token) > 35 else token
 
         return format_html(
             '<code style="background: #f4f4f4; padding: 5px; '
@@ -182,16 +222,12 @@ class GoogleOAuthTokenAdmin(admin.ModelAdmin):
 
     @admin.display(description="Refresh Token")
     def refresh_token_preview(self, obj):
-        """Display a preview of the refresh token."""
+        """Display a truncated preview of the refresh token."""
         if not obj.refresh_token:
             return "None"
 
-        # Show first 20 and last 10 characters
         token = obj.refresh_token
-        if len(token) > 35:
-            preview = f"{token[:20]}...{token[-10:]}"
-        else:
-            preview = token
+        preview = f"{token[:20]}...{token[-10:]}" if len(token) > 35 else token
 
         return format_html(
             '<code style="background: #f4f4f4; padding: 5px; '
